@@ -30,7 +30,7 @@
   // Render terminates TLS on 443 and proxies internally to your app's PORT,
   // so no :port suffix goes here — just the bare host, scheme wss://.
   // (Only use the localhost fallback below while testing on one machine.)
-  const SIGNALING_URL = 'wss://p2p-web-file-sharing-terminal.onrender.com';
+  const SIGNALING_URL = 'wss://YOUR-RENDER-SERVICE-NAME.onrender.com';
   // const SIGNALING_URL = 'ws://localhost:8080'; // local testing fallback
 
   const ICE_SERVERS = [
@@ -50,6 +50,7 @@
   const $ = (id) => document.getElementById(id);
 
   const el = {
+    heroStatus: $('hero-status'),
     dotWs: $('dot-ws'), txtWs: $('txt-ws'),
     dotPeer: $('dot-peer'), txtPeer: $('txt-peer'),
     btnCreate: $('btn-create'),
@@ -110,14 +111,22 @@
 
   function setWsStatus(state) {
     // state: 'off' | 'connecting' | 'on' | 'err'
-    el.dotWs.className = 'dot ' + (state === 'on' ? 'on' : state === 'err' ? 'err' : state === 'connecting' ? 'warn' : 'off');
-    el.txtWs.textContent = { off: 'OFFLINE', connecting: 'CONNECTING', on: 'ONLINE', err: 'ERROR' }[state];
+    el.dotWs.className = 'sig ' + (state === 'on' ? 'on' : state === 'err' ? 'err' : state === 'connecting' ? 'warn' : 'off');
+    el.txtWs.textContent = { off: 'offline', connecting: 'connecting', on: 'online', err: 'error' }[state];
   }
 
   function setPeerStatus(state) {
     // state: 'none' | 'waiting' | 'connected' | 'lost'
-    el.dotPeer.className = 'dot ' + (state === 'connected' ? 'on' : state === 'waiting' ? 'warn' : state === 'lost' ? 'err' : 'off');
-    el.txtPeer.textContent = { none: 'NONE', waiting: 'WAITING', connected: 'LINKED', lost: 'LOST' }[state];
+    el.dotPeer.className = 'sig ' + (state === 'connected' ? 'on' : state === 'waiting' ? 'warn' : state === 'lost' ? 'err' : 'off');
+    el.txtPeer.textContent = { none: 'none', waiting: 'waiting', connected: 'linked', lost: 'lost' }[state];
+
+    // Drive the big hero readout — the single most load-bearing fact on screen.
+    el.heroStatus.textContent = {
+      none: 'NO SESSION', waiting: 'AWAITING PEER', connected: 'LINKED', lost: 'LINK LOST',
+    }[state];
+    el.heroStatus.className = 'hero-value ' + (
+      state === 'connected' ? 'state-on' : state === 'waiting' ? 'state-wait' : state === 'lost' ? 'state-err' : ''
+    );
   }
 
   // =========================================================================
@@ -155,7 +164,7 @@
     el.filename.textContent = name;
     el.filesize.textContent = formatBytes(size);
     el.direction.textContent = direction;
-    el.progressFill.style.width = '0%';
+    el.progressFill.style.transform = 'scaleX(0)';
     el.pct.textContent = '0%';
     el.bytes.textContent = `0 B / ${formatBytes(size)}`;
     el.speed.textContent = '0 KB/s';
@@ -177,7 +186,7 @@
     const remaining = total - done;
     const etaSec = speed > 0 ? remaining / speed : Infinity;
 
-    el.progressFill.style.width = `${pct.toFixed(1)}%`;
+    el.progressFill.style.transform = `scaleX(${(pct / 100).toFixed(4)})`;
     el.pct.textContent = `${pct.toFixed(1)}%`;
     el.bytes.textContent = `${formatBytes(done)} / ${formatBytes(total)}`;
     el.speed.textContent = formatSpeed(speed);
@@ -592,7 +601,6 @@
     })
   );
 
-  
   el.dropzone.addEventListener('drop', (e) => {
     const file = e.dataTransfer.files[0];
     if (file) sendFile(file);
