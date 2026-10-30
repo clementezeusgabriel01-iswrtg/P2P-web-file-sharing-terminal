@@ -50,6 +50,11 @@
   const SIGNALING_URL = 'wss://p2p-web-file-sharing-terminal.onrender.com/';
   // const SIGNALING_URL = 'ws://localhost:8080'; // local testing fallback
 
+  // Same backend as signaling, over plain HTTPS, for the p2p.ai assistant.
+  const AI_ENDPOINT = 'https://p2p-web-file-sharing-terminal.onrender.com/api/chat';
+  // const AI_ENDPOINT = 'http://localhost:8080/api/chat'; // local testing fallback
+  const AI_HISTORY_LIMIT = 8; // messages (not pairs) kept as context for the assistant
+
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
@@ -111,10 +116,18 @@
     bootStatus: $('boot-status'),
     tabBtnDocs: $('tab-btn-docs'),
     tabBtnApp: $('tab-btn-app'),
+    tabBtnAi: $('tab-btn-ai'),
     panelDocs: $('panel-docs'),
     panelApp: $('panel-app'),
+    panelAi: $('panel-ai'),
     btnMenu: $('btn-menu'),
     mobileMenu: $('mobile-menu'),
+    aiChat: $('ai-chat'),
+    aiForm: $('ai-form'),
+    aiInput: $('ai-input'),
+    aiSend: $('ai-send'),
+    aiTyping: $('ai-typing'),
+    aiSuggestList: $('ai-suggest-list'),
   };
 
   // =========================================================================
@@ -758,6 +771,7 @@
   const TABS = {
     docs: { tabBtn: el.tabBtnDocs, panel: el.panelDocs },
     app: { tabBtn: el.tabBtnApp, panel: el.panelApp },
+    ai: { tabBtn: el.tabBtnAi, panel: el.panelAi },
   };
 
   function activateTab(name) {
@@ -792,6 +806,7 @@
 
   el.tabBtnDocs.addEventListener('click', () => activateTab('docs'));
   el.tabBtnApp.addEventListener('click', () => activateTab('app'));
+  el.tabBtnAi.addEventListener('click', () => activateTab('ai'));
 
   el.btnMenu.addEventListener('click', () => {
     if (el.mobileMenu.hidden) openMobileMenu(); else closeMobileMenu();
@@ -817,8 +832,12 @@
     if (e.key === 'Escape' && !el.mobileMenu.hidden) closeMobileMenu();
   });
 
-  // Docs is the default landing tab; #app / #transfer deep-links open the tool directly.
-  activateTab(location.hash === '#app' || location.hash === '#transfer' ? 'app' : 'docs');
+  // Docs is the default landing tab; #app / #transfer and #ai deep-link directly.
+  activateTab(
+    location.hash === '#app' || location.hash === '#transfer' ? 'app'
+      : location.hash === '#ai' ? 'ai'
+      : 'docs'
+  );
 
   // =========================================================================
   // UI EVENT WIRING
@@ -901,6 +920,80 @@
   el.dropzone.addEventListener('drop', (e) => {
     const file = e.dataTransfer.files[0];
     if (file) sendFile(file);
+  });
+
+  // =========================================================================
+  // P2P.AI — assistant chat tab
+  // =========================================================================
+
+  let aiHistory = [];   // [{ role: 'user'|'assistant', content }]
+  let aiBusy = false;
+
+  function appendAiMessage(role, text) {
+    const wrap = document.createElement('div');
+    wrap.className = `ai-msg ai-msg-${role}`;
+    wrap.innerHTML = `
+      <span class="ai-msg-tag">${role === 'user' ? 'you' : 'p2p.ai'}</span>
+      <p class="ai-msg-text"></p>
+    `;
+    wrap.querySelector('.ai-msg-text').textContent = text;
+    el.aiChat.appendChild(wrap);
+    el.aiChat.scrollTop = el.aiChat.scrollHeight;
+    return wrap;
+  }
+
+  function setAiBusy(isBusy) {
+    aiBusy = isBusy;
+    el.aiInput.disabled = isBusy;
+    el.aiSend.disabled = isBusy;
+    el.aiTyping.classList.toggle('hidden', !isBusy);
+    if (isBusy) el.aiChat.scrollTop = el.aiChat.scrollHeight;
+  }
+
+  async function askAi(question) {
+    const text = question.trim();
+    if (!text || aiBusy) return;
+
+    appendAiMessage('user', text);
+    aiHistory.push({ role: 'user', content: text });
+    aiHistory = aiHistory.slice(-AI_HISTORY_LIMIT);
+    setAiBusy(true);
+
+    try {
+      const res = await fetch(AI_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history: aiHistory.slice(0, -1) }),
+      });
+
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const data = await res.json();
+      const reply = (data && data.reply ? String(data.reply) : '').trim();
+
+      if (!reply) throw new Error('empty reply');
+
+      appendAiMessage('bot', reply);
+      aiHistory.push({ role: 'assistant', content: reply });
+      aiHistory = aiHistory.slice(-AI_HISTORY_LIMIT);
+    } catch (err) {
+      appendAiMessage('err', '> assistant unreachable. check your connection and try again.');
+    } finally {
+      setAiBusy(false);
+      el.aiInput.focus();
+    }
+  }
+
+  el.aiForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = el.aiInput.value;
+    el.aiInput.value = '';
+    askAi(text);
+  });
+
+  el.aiSuggestList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.ai-suggest');
+    if (!btn || aiBusy) return;
+    askAi(btn.dataset.q);
   });
 
   // =========================================================================
