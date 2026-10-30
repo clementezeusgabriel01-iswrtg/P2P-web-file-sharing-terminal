@@ -39,7 +39,7 @@
       </svg>
       <span class="brand-name">P2P <span class="brand-slash">/</span> Terminal</span>
     </div>
-    <p class="brand-tagline">Browser-to-browser file transfer.</p>
+    <p class="brand-tagline">Browser-to-browser transfer.</p>
   </header>
 
   <!-- ================================== SECTION NAV ================================== -->
@@ -48,6 +48,7 @@
       <button class="tab-link" id="tab-btn-docs" role="tab" aria-selected="true" aria-controls="panel-docs" data-tab="docs">Docs</button>
       <button class="tab-link" id="tab-btn-app" role="tab" aria-selected="false" aria-controls="panel-app" data-tab="app" tabindex="-1">Transfer</button>
       <button class="tab-link" id="tab-btn-ai" role="tab" aria-selected="false" aria-controls="panel-ai" data-tab="ai" tabindex="-1">p2p.ai</button>
+      <button class="tab-link" id="tab-btn-speed" role="tab" aria-selected="false" aria-controls="panel-speed" data-tab="speed" tabindex="-1">Speed test</button>
     </div>
     <button class="hamburger-btn" id="btn-menu" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
       <svg class="icon icon-menu" viewBox="0 0 24 24">
@@ -58,6 +59,7 @@
       <button class="mobile-menu-item" data-tab="docs" aria-current="true">Docs</button>
       <button class="mobile-menu-item" data-tab="app">Transfer</button>
       <button class="mobile-menu-item" data-tab="ai">p2p.ai</button>
+      <button class="mobile-menu-item" data-tab="speed">Speed test</button>
     </div>
   </nav>
 
@@ -468,10 +470,95 @@
 
     </div>
 
+    <!-- ================================== SPEED TEST PANEL ================================== -->
+    <div class="panel" id="panel-speed" role="tabpanel" aria-labelledby="tab-btn-speed" hidden>
+
+      <section class="hero" aria-label="Speed test status">
+        <div class="hero-value" id="speed-hero-status">Ready to test</div>
+        <div class="hero-sub">
+          <span class="status-chip">
+            <span class="status-dot off" id="speed-dot"></span>
+            <span id="speed-phase-text">idle</span>
+          </span>
+        </div>
+      </section>
+
+      <div class="grid">
+
+        <div class="col-main">
+
+          <section class="card">
+            <h2 class="card-title">Connection speed test</h2>
+            <p class="card-lede">Checks ping, download, and upload speed between your browser and this app's server. This is a server throughput test, not the peer-to-peer link itself &mdash; see the note on the right.</p>
+
+            <div class="session-row">
+              <button class="btn btn-primary" id="btn-speed-start">Start test</button>
+              <button class="btn btn-outline hidden" id="btn-speed-stop">Stop</button>
+            </div>
+
+            <div class="speed-progress-wrap hidden" id="speed-progress-wrap">
+              <div class="progress-track">
+                <div class="progress-fill" id="speed-progress-fill"></div>
+              </div>
+              <div class="progress-readout">
+                <span id="speed-progress-label">Idle</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card card-log">
+            <div class="card-header-row">
+              <h2 class="card-title">Log</h2>
+              <button class="btn-text" id="btn-speed-clear-log">Clear</button>
+            </div>
+            <div class="terminal-log" id="speed-log" role="log" aria-live="polite"></div>
+          </section>
+
+        </div>
+
+        <aside class="col-side">
+
+          <section class="card">
+            <h2 class="card-title">Results</h2>
+            <div class="metric-grid speed-result-grid">
+              <div class="metric">
+                <div class="metric-label">Ping</div>
+                <div class="metric-value" id="speed-stat-ping">&mdash;</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Jitter</div>
+                <div class="metric-value" id="speed-stat-jitter">&mdash;</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Download</div>
+                <div class="metric-value" id="speed-stat-download">&mdash;</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Upload</div>
+                <div class="metric-value" id="speed-stat-upload">&mdash;</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <h2 class="card-title">What this measures</h2>
+            <ul class="docs-list">
+              <li>Ping, jitter, download, and upload are all measured against this app's own server over regular HTTPS &mdash; not your WebRTC link to a peer.</li>
+              <li>A file sent in the Transfer tab travels browser-to-browser directly, so it's often faster than this number, especially on the same network.</li>
+              <li>Results vary with your ISP, Wi-Fi, VPN, and how busy this server's region is right now.</li>
+            </ul>
+          </section>
+
+        </aside>
+
+      </div>
+
+    </div>
+
   </main>
 
   <footer class="site-footer">
-    <p>Chunked binary transfer over an RTCDataChannel. Every file is verified end to end with SHA-256.<br>Made with HTML, CSS, and JavaScript with a lot of coffee ☕<br>Created by Zeus @2026.</p>
+    <p>Chunked binary transfer over an RTCDataChannel. Every file is verified end to end with SHA-256.<br>Built with HTML, CSS, and JavaScript with<br>a lot of coffee ☕<br>Created by Zeus @2026.</p>
     <div class="footer-links">
       <a class="btn-icon" href="https://github.com/clementezeusgabriel01-iswrtg" target="_blank" rel="noopener noreferrer" title="GitHub / dev profile" aria-label="GitHub / dev profile">
         <svg class="icon" viewBox="0 0 24 24">
@@ -490,6 +577,6 @@
 
 </div>
 
-<script src="client.js?v=20261030-1"></script>
+<script src="client.js?v=20261030-2"></script>
 </body>
 </html>
