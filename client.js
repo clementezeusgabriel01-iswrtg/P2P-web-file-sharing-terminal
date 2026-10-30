@@ -30,7 +30,7 @@
   // Render terminates TLS on 443 and proxies internally to your app's PORT,
   // so no :port suffix goes here — just the bare host, scheme wss://.
   // (Only use the localhost fallback below while testing on one machine.)
-  const SIGNALING_URL = 'wss://YOUR-RENDER-SERVICE-NAME.onrender.com';
+  const SIGNALING_URL = 'wss://p2p-web-file-sharing-terminal.onrender.com';
   // const SIGNALING_URL = 'ws://localhost:8080'; // local testing fallback
 
   const ICE_SERVERS = [
