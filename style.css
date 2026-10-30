@@ -420,6 +420,25 @@ button, input {
   border-top: 1px solid var(--border);
 }
 
+/* -------------------------------------------------------------- speed test */
+
+.speed-progress-wrap {
+  margin-top: calc(var(--u) * 5);
+}
+
+.speed-progress-wrap.hidden { display: none; }
+.btn.hidden { display: none; }
+
+.speed-result-grid {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.metric-value.live {
+  color: var(--accent);
+}
+
 /* ---------------------------------------------------- docs walkthrough -- */
 
 .walkthrough-grid {
@@ -1218,4 +1237,4 @@ button, input {
 @media (max-width: 640px) {
   .ai-chat { max-height: 360px; }
   .ai-input-row { flex-direction: column; }
-   }
+}
