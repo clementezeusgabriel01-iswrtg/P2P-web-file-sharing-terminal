@@ -3,125 +3,337 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>p2p/terminal — direct file transfer</title>
+<meta name="color-scheme" content="light">
+<title>P2P / Terminal — direct file transfer</title>
+<meta name="description" content="Send files straight from one browser to another over an encrypted WebRTC link. Nothing is stored on a server in between.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div class="frame">
+<!-- ============================= BOOT / LOADING SCREEN ============================= -->
+<div class="boot-loader" id="boot-loader" role="status" aria-live="polite">
+  <svg class="boot-mark" viewBox="0 0 28 28" width="40" height="40" aria-hidden="true">
+    <circle cx="7" cy="14" r="4.5"></circle>
+    <circle cx="21" cy="14" r="4.5"></circle>
+    <line x1="11.2" y1="14" x2="16.8" y2="14"></line>
+  </svg>
+  <svg class="boot-spinner" viewBox="0 0 40 40" width="28" height="28" aria-hidden="true">
+    <circle class="boot-spinner-track" cx="20" cy="20" r="17"></circle>
+    <circle class="boot-spinner-arc" cx="20" cy="20" r="17"></circle>
+  </svg>
+  <p class="boot-status" id="boot-status">Initializing interface&hellip;</p>
+</div>
 
-  <header class="masthead">
-    <span class="brand">P2P/TERMINAL</span>
-    <span class="masthead-meta">webrtc datachannel, direct — no file data touches the signaling server</span>
+<div class="page">
+
+  <!-- ================================== TOP BAR ================================== -->
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo-mark" viewBox="0 0 28 28" width="24" height="24" aria-hidden="true">
+        <circle cx="7" cy="14" r="4.5"></circle>
+        <circle cx="21" cy="14" r="4.5"></circle>
+        <line x1="11.2" y1="14" x2="16.8" y2="14"></line>
+      </svg>
+      <span class="brand-name">P2P <span class="brand-slash">/</span> Terminal</span>
+    </div>
+    <p class="brand-tagline">Browser-to-browser transfer. Your files never pass through a server.</p>
   </header>
 
-  <section class="hero">
-    <div class="hero-label">link status</div>
-    <div class="hero-value" id="hero-status">NO SESSION</div>
-    <div class="hero-sub">
-      <span id="dot-ws" class="sig"></span><span>signal&nbsp;<span id="txt-ws">offline</span></span>
-      <span class="hero-sub-sep">/</span>
-      <span id="dot-peer" class="sig"></span><span>peer&nbsp;<span id="txt-peer">none</span></span>
+  <!-- ================================== SECTION NAV ================================== -->
+  <nav class="tabnav" aria-label="Sections">
+    <div class="tabnav-tabs" role="tablist">
+      <button class="tab-link" id="tab-btn-docs" role="tab" aria-selected="true" aria-controls="panel-docs" data-tab="docs">Docs</button>
+      <button class="tab-link" id="tab-btn-app" role="tab" aria-selected="false" aria-controls="panel-app" data-tab="app" tabindex="-1">Transfer</button>
     </div>
-  </section>
+    <button class="hamburger-btn" id="btn-menu" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+      <svg class="icon icon-menu" viewBox="0 0 24 24">
+        <path d="M4 7h16M4 12h16M4 17h16"></path>
+      </svg>
+    </button>
+    <div class="mobile-menu" id="mobile-menu" hidden>
+      <button class="mobile-menu-item" data-tab="docs" aria-current="true">Docs</button>
+      <button class="mobile-menu-item" data-tab="app">Transfer</button>
+    </div>
+  </nav>
 
-  <main class="grid">
+  <main class="container">
 
-    <!-- ============================= MAIN COLUMN (8/12) ============================= -->
-    <section class="col-main">
+    <!-- ================================== DOCS PANEL ================================== -->
+    <div class="panel docs" id="panel-docs" role="tabpanel" aria-labelledby="tab-btn-docs">
 
-      <div class="block">
-        <button class="btn btn-solid" id="btn-create">create room</button>
-        <div class="join-row">
-          <input
-            type="text"
-            id="input-join-code"
-            class="input-code"
-            placeholder="ROOM CODE"
-            maxlength="6"
-            autocomplete="off"
-            spellcheck="false"
-          >
-          <button class="btn" id="btn-join">join</button>
+      <header class="docs-header">
+        <h1 class="docs-title">How P2P / Terminal works</h1>
+        <p class="docs-intro">A short guide to sending a file directly to someone else's browser — what happens, what it needs, and what it doesn't do.</p>
+      </header>
+
+      <section class="docs-section">
+        <h2>Overview</h2>
+        <p>P2P / Terminal connects two browsers directly using WebRTC. Once a session is linked, a file you send travels straight from your device to your peer's over an encrypted data channel — it is never uploaded anywhere in between. A small signaling server only helps the two browsers find each other; it sees connection metadata, never file contents.</p>
+      </section>
+
+      <section class="docs-section">
+        <h2>Start a session</h2>
+        <ol class="docs-steps">
+          <li>
+            <strong>Create a session</strong> to get a six-character room code, then share it with your peer however you'd like — chat, text, a call.
+          </li>
+          <li>
+            <strong>Join a session</strong> by entering that code on the other end. The two browsers negotiate a direct link automatically.
+          </li>
+          <li>
+            Watch the status at the top of the Transfer tab — it moves from <em>awaiting peer</em> to <em>connected</em> once the link is open.
+          </li>
+        </ol>
+      </section>
+
+      <section class="docs-section">
+        <h2>Send a file</h2>
+        <p>Drop a file onto the panel, or click it to browse, once a session is connected. The file is split into small chunks and streamed over the data channel, with a live readout of progress, speed, and time remaining.</p>
+        <p>Before sending, your browser computes a SHA-256 hash of the file. Your peer computes the same hash from what it received and the app compares the two automatically, so you can tell at a glance whether the file arrived intact.</p>
+      </section>
+
+      <section class="docs-section">
+        <h2>Privacy and security</h2>
+        <ul class="docs-list">
+          <li>File data travels over a direct, encrypted WebRTC connection between the two browsers involved — not through any server.</li>
+          <li>The signaling server only relays connection setup messages and never stores or inspects file contents.</li>
+          <li>A room accepts exactly two people. It closes as soon as either one disconnects, and the code cannot be reused afterward.</li>
+          <li>Integrity is verified end to end with a SHA-256 checksum, shown in full on the Transfer tab.</li>
+        </ul>
+      </section>
+
+      <section class="docs-section">
+        <h2>Requirements and limitations</h2>
+        <ul class="docs-list">
+          <li>A modern browser with WebRTC support — recent Chrome, Firefox, Edge, or Safari.</li>
+          <li>Both people need the page open at the same time; there is no way to queue a file for later.</li>
+          <li>Connections are established with public STUN servers only. On a strict corporate network or firewall, a direct link can occasionally fail to establish.</li>
+          <li>The sender holds the whole file in memory during transfer, so very large files are limited by available RAM.</li>
+        </ul>
+      </section>
+
+      <div class="docs-cta">
+        <button class="btn btn-primary" data-tab="app">Open the transfer tool</button>
+      </div>
+    </div>
+
+    <!-- ================================== APP PANEL ================================== -->
+    <div class="panel" id="panel-app" role="tabpanel" aria-labelledby="tab-btn-app" hidden>
+
+    <!-- ================================== HERO / LINK STATUS ================================== -->
+    <section class="hero" aria-label="Connection status">
+
+      <div class="link-diagram" id="link-diagram">
+        <div class="link-node">
+          <span class="link-node-dot" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="13" rx="1.6"></rect>
+              <path d="M8 21h8M12 17v4"></path>
+            </svg>
+          </span>
+          <span class="link-node-label">You</span>
         </div>
 
-        <div class="room-code-display hidden" id="room-code-box">
-          <span class="room-code-label">share this code</span>
-          <span class="room-code-value" id="room-code-value">------</span>
-          <button class="btn-copy" id="btn-copy" title="copy to clipboard">copy</button>
+        <div class="link-line" aria-hidden="true">
+          <svg viewBox="0 0 200 8" preserveAspectRatio="none">
+            <line class="link-line-base" x1="0" y1="4" x2="200" y2="4"></line>
+            <line class="link-line-flow" x1="0" y1="4" x2="200" y2="4"></line>
+          </svg>
+        </div>
+
+        <div class="link-node">
+          <span class="link-node-dot" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="13" rx="1.6"></rect>
+              <path d="M8 21h8M12 17v4"></path>
+            </svg>
+          </span>
+          <span class="link-node-label">Peer</span>
         </div>
       </div>
 
-      <div class="block">
-        <div class="dropzone" id="dropzone">
-          <span class="dropzone-text">drop file / click to browse</span>
-          <input type="file" id="file-input" hidden>
-        </div>
-      </div>
+      <div class="hero-value" id="hero-status">No active session</div>
 
-      <div class="block block-grow">
-        <div class="terminal-log" id="terminal-log" role="log" aria-live="polite"></div>
+      <div class="hero-sub">
+        <span class="status-chip">
+          <span class="status-dot off" id="dot-ws"></span>
+          <span>Signal <span id="txt-ws">offline</span></span>
+        </span>
+        <span class="status-chip">
+          <span class="status-dot off" id="dot-peer"></span>
+          <span>Peer <span id="txt-peer">none</span></span>
+        </span>
       </div>
-
     </section>
 
-    <!-- ============================= SIDE COLUMN (4/12) ============================= -->
-    <aside class="col-side">
+    <!-- ================================== MAIN GRID ================================== -->
+    <div class="grid">
 
-      <div class="side-label">active transfer</div>
+      <!-- ----------------------------- MAIN COLUMN ----------------------------- -->
+      <div class="col-main">
 
-      <div class="file-meta">
-        <div class="file-meta-name" id="stat-filename">—</div>
-        <div class="file-meta-sub">
-          <span id="stat-direction">idle</span>
-          <span class="file-meta-dot">/</span>
-          <span id="stat-filesize">0 B</span>
-        </div>
+        <section class="card">
+          <h2 class="card-title">Start or join a session</h2>
+          <p class="card-lede">A session links exactly two browsers. Create one and share the code, or enter a code someone shared with you.</p>
+
+          <div class="session-row">
+            <button class="btn btn-primary" id="btn-create" disabled>Create a session</button>
+
+            <div class="join-group">
+              <input
+                type="text"
+                id="input-join-code"
+                class="input-code"
+                placeholder="Room code"
+                maxlength="6"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Room code"
+              >
+              <button class="btn btn-outline" id="btn-join" disabled>Join</button>
+            </div>
+          </div>
+
+          <div class="room-code-display hidden" id="room-code-box">
+            <div class="room-code-text">
+              <span class="room-code-label">Share this code with your peer</span>
+              <span class="room-code-value" id="room-code-value">------</span>
+            </div>
+            <button class="btn-icon" id="btn-copy" title="Copy room code" aria-label="Copy room code">
+              <svg class="icon icon-copy" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="11" height="11" rx="1.5"></rect>
+                <path d="M5 15V6a1.5 1.5 0 0 1 1.5-1.5H15"></path>
+              </svg>
+              <svg class="icon icon-check" viewBox="0 0 24 24">
+                <path d="M4 12.5 9.5 18 20 6.5"></path>
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 class="card-title">Send a file</h2>
+          <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Choose a file to send">
+            <svg class="icon icon-upload" viewBox="0 0 24 24">
+              <path d="M12 15.5V4M12 4 7.2 8.8M12 4l4.8 4.8"></path>
+              <path d="M4.5 15.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"></path>
+            </svg>
+            <span class="dropzone-text">Drop a file here, or click to browse</span>
+            <span class="dropzone-sub">Sent directly to your peer once a session is linked</span>
+            <input type="file" id="file-input" hidden>
+          </div>
+        </section>
+
+        <section class="card card-log">
+          <div class="card-header-row">
+            <h2 class="card-title">Activity</h2>
+            <button class="btn-text" id="btn-clear-log">Clear</button>
+          </div>
+          <div class="terminal-log" id="terminal-log" role="log" aria-live="polite"></div>
+        </section>
+
       </div>
 
-      <div class="progress-track">
-        <div class="progress-fill" id="progress-fill"></div>
-      </div>
-      <div class="progress-readout">
-        <span id="stat-pct">0%</span>
-        <span id="stat-bytes">0 B / 0 B</span>
-      </div>
+      <!-- ----------------------------- SIDE COLUMN ----------------------------- -->
+      <aside class="col-side">
 
-      <div class="metric-grid">
-        <div class="metric">
-          <div class="metric-label">speed</div>
-          <div class="metric-value" id="stat-speed">0 KB/s</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">eta</div>
-          <div class="metric-value" id="stat-eta">—</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">chunk</div>
-          <div class="metric-value">64 KB</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">checksum</div>
-          <div class="metric-value" id="stat-checksum">pending</div>
-        </div>
-      </div>
+        <section class="card transfer-card" id="transfer-card">
+          <h2 class="card-title">Transfer</h2>
 
-      <div class="hash-block" id="hash-block">
-        <div class="hash-row">
-          <span class="hash-label">local sha-256</span>
-          <span class="hash-value" id="hash-local">—</span>
-        </div>
-        <div class="hash-row">
-          <span class="hash-label">remote sha-256</span>
-          <span class="hash-value" id="hash-remote">—</span>
-        </div>
-      </div>
+          <div class="transfer-empty" id="transfer-empty">
+            <svg class="icon icon-empty" viewBox="0 0 24 24">
+              <path d="M7 8.5 11.5 4 16 8.5M11.5 4v11.5"></path>
+              <path d="M17 15.5 12.5 20 8 15.5M12.5 20V8.5"></path>
+            </svg>
+            <p>No transfer yet. Once a session is linked, sending or receiving a file will show live progress here.</p>
+          </div>
 
-    </aside>
+          <div class="transfer-body" id="transfer-body">
+            <div class="file-meta">
+              <div class="file-meta-name" id="stat-filename">—</div>
+              <div class="file-meta-sub">
+                <span id="stat-direction">Idle</span>
+                <span class="file-meta-dot">&middot;</span>
+                <span id="stat-filesize">0 B</span>
+              </div>
+            </div>
+
+            <div class="progress-track">
+              <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <div class="progress-readout">
+              <span id="stat-pct">0%</span>
+              <span id="stat-bytes">0 B / 0 B</span>
+            </div>
+
+            <div class="metric-grid">
+              <div class="metric">
+                <div class="metric-label">Speed</div>
+                <div class="metric-value" id="stat-speed">0 KB/s</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Time left</div>
+                <div class="metric-value" id="stat-eta">—</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Chunk size</div>
+                <div class="metric-value">64 KB</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Checksum</div>
+                <div class="metric-value wait" id="stat-checksum">pending</div>
+              </div>
+            </div>
+
+            <div class="hash-block">
+              <div class="hash-row">
+                <span class="hash-label">Local SHA-256</span>
+                <div class="hash-value-row">
+                  <span class="hash-value" id="hash-local">—</span>
+                  <button class="btn-icon btn-icon-small" id="btn-copy-local-hash" title="Copy local hash" aria-label="Copy local hash">
+                    <svg class="icon icon-copy" viewBox="0 0 24 24">
+                      <rect x="9" y="9" width="11" height="11" rx="1.5"></rect>
+                      <path d="M5 15V6a1.5 1.5 0 0 1 1.5-1.5H15"></path>
+                    </svg>
+                    <svg class="icon icon-check" viewBox="0 0 24 24">
+                      <path d="M4 12.5 9.5 18 20 6.5"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="hash-row">
+                <span class="hash-label">Remote SHA-256</span>
+                <div class="hash-value-row">
+                  <span class="hash-value" id="hash-remote">—</span>
+                  <button class="btn-icon btn-icon-small" id="btn-copy-remote-hash" title="Copy remote hash" aria-label="Copy remote hash">
+                    <svg class="icon icon-copy" viewBox="0 0 24 24">
+                      <rect x="9" y="9" width="11" height="11" rx="1.5"></rect>
+                      <path d="M5 15V6a1.5 1.5 0 0 1 1.5-1.5H15"></path>
+                    </svg>
+                    <svg class="icon icon-check" viewBox="0 0 24 24">
+                      <path d="M4 12.5 9.5 18 20 6.5"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </aside>
+
+    </div>
+
+    </div>
 
   </main>
 
-  <footer class="rule-footer">chunked binary transfer over rtcdatachannel &middot; sha-256 verified end to end</footer>
+  <footer class="site-footer">
+    <p>Chunked binary transfer over an RTCDataChannel. Every file is verified end to end with SHA-256.</p>
+  </footer>
 
 </div>
 
