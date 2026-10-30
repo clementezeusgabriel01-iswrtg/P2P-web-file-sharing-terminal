@@ -56,8 +56,13 @@
   ];
 
   const CHUNK_SIZE = 64 * 1024;                 // 64 KB per data channel message
-  const BUFFER_HIGH_WATER = 16 * 1024 * 1024;   // pause sending above this
-  const BUFFER_LOW_WATER = 1 * 1024 * 1024;     // resume sending below this
+  // Chromium's RTCDataChannel has an internal hard cap on queued-but-unsent
+  // bytes around 16 MB (stricter still on some mobile/WebView builds). The
+  // old HIGH_WATER sat exactly on that ceiling, so one more chunk queued
+  // right at the limit could overflow it and throw "send queue is full"
+  // instead of pausing cleanly. Keep real headroom under it.
+  const BUFFER_HIGH_WATER = 1 * 1024 * 1024;    // pause sending above this
+  const BUFFER_LOW_WATER = 256 * 1024;          // resume sending below this
   const UI_THROTTLE_MS = 100;                   // max metrics DOM update rate
   const YIELD_EVERY_N_CHUNKS = 12;              // ~768 KB — keeps the UI thread responsive
 
@@ -543,7 +548,7 @@
     }
 
     // Announce the incoming file so the receiver can prep its buffer.
-    dataChannel.send(JSON.stringify({
+   dataChannel.send(JSON.stringify({
       type: 'meta',
       name: file.name,
       size: file.size,
@@ -590,19 +595,38 @@
       let offset = 0;
       let chunksSinceYield = 0;
 
+      function pauseForDrain() {
+        dataChannel.onbufferedamountlow = () => {
+          dataChannel.onbufferedamountlow = null;
+          pump();
+        };
+      }
+
       function pump() {
         try {
           while (offset < total) {
             if (dataChannel.bufferedAmount > BUFFER_HIGH_WATER) {
-              dataChannel.onbufferedamountlow = () => {
-                dataChannel.onbufferedamountlow = null;
-                pump();
-              };
+              pauseForDrain();
               return;
             }
 
             const end = Math.min(offset + CHUNK_SIZE, total);
-            dataChannel.send(buffer.slice(offset, end));
+            try {
+              dataChannel.send(buffer.slice(offset, end));
+            } catch (sendErr) {
+              // The browser's own internal send queue (independent of our
+              // BUFFER_HIGH_WATER check, and not always reflected by
+              // bufferedAmount in time) can still overflow under this
+              // chunk, e.g. "RTCDataChannel send queue is full" on some
+              // mobile builds. Don't abort the whole transfer for a single
+              // transient overflow — wait for the channel to drain and
+              // retry this exact chunk.
+              if (/queue is full/i.test(sendErr.message || '')) {
+                pauseForDrain();
+                return;
+              }
+              throw sendErr;
+            }
             offset = end;
             chunksSinceYield += 1;
             updateTransferMetrics(offset, total, startTime);
