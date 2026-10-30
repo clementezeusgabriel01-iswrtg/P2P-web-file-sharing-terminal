@@ -596,6 +596,17 @@
       let chunksSinceYield = 0;
 
       function pauseForDrain() {
+        // If bufferedAmount is already at/below the low-water mark, the
+        // 'bufferedamountlow' event will never fire (it only fires on a
+        // transition down across the threshold) — most often this happens
+        // when a send() throws "queue is full" before anything was
+        // actually queued, so bufferedAmount never rose in the first
+        // place. Retrying on a short timer covers that case instead of
+        // waiting forever on an event that won't come.
+        if (dataChannel.bufferedAmount <= BUFFER_LOW_WATER) {
+          setTimeout(pump, 50);
+          return;
+        }
         dataChannel.onbufferedamountlow = () => {
           dataChannel.onbufferedamountlow = null;
           pump();
