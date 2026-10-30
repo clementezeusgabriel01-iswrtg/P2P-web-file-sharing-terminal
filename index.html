@@ -66,25 +66,25 @@
 
       <header class="docs-header">
         <h1 class="docs-title">How P2P / Terminal works</h1>
-        <p class="docs-intro">A short guide to sending a file directly to someone else's browser — what happens, what it needs, and what it doesn't do.</p>
+        <p class="docs-intro">A short guide to sending a file directly to someone else's browser: what happens, what it needs, and what it doesn't do.</p>
       </header>
 
       <section class="docs-section">
         <h2>Overview</h2>
-        <p>P2P / Terminal connects two browsers directly using WebRTC. Once a session is linked, a file you send travels straight from your device to your peer's over an encrypted data channel — it is never uploaded anywhere in between. A small signaling server only helps the two browsers find each other; it sees connection metadata, never file contents.</p>
+        <p>P2P / Terminal connects two browsers directly using WebRTC. Once a session is linked, a file you send travels straight from your device to your peer's over an encrypted data channel; it is never uploaded anywhere in between. A small signaling server only helps the two browsers find each other; it sees connection metadata, never file contents.</p>
       </section>
 
       <section class="docs-section">
         <h2>Start a session</h2>
         <ol class="docs-steps">
           <li>
-            <strong>Create a session</strong> to get a six-character room code, then share it with your peer however you'd like — chat, text, a call.
+            <strong>Create a session</strong> to get a six-character room code, then share it with your peer however you'd like: chat, text, a call.
           </li>
           <li>
             <strong>Join a session</strong> by entering that code on the other end. The two browsers negotiate a direct link automatically.
           </li>
           <li>
-            Watch the status at the top of the Transfer tab — it moves from <em>awaiting peer</em> to <em>connected</em> once the link is open.
+            Watch the status at the top of the Transfer tab: it moves from <em>awaiting peer</em> to <em>connected</em> once the link is open.
           </li>
         </ol>
       </section>
@@ -98,7 +98,7 @@
       <section class="docs-section">
         <h2>Privacy and security</h2>
         <ul class="docs-list">
-          <li>File data travels over a direct, encrypted WebRTC connection between the two browsers involved — not through any server.</li>
+          <li>File data travels over a direct, encrypted WebRTC connection between the two browsers involved, not through any server.</li>
           <li>The signaling server only relays connection setup messages and never stores or inspects file contents.</li>
           <li>A room accepts exactly two people. It closes as soon as either one disconnects, and the code cannot be reused afterward.</li>
           <li>Integrity is verified end to end with a SHA-256 checksum, shown in full on the Transfer tab.</li>
@@ -108,7 +108,7 @@
       <section class="docs-section">
         <h2>Requirements and limitations</h2>
         <ul class="docs-list">
-          <li>A modern browser with WebRTC support — recent Chrome, Firefox, Edge, or Safari.</li>
+          <li>A modern browser with WebRTC support: recent Chrome, Firefox, Edge, or Safari.</li>
           <li>Both people need the page open at the same time; there is no way to queue a file for later.</li>
           <li>Connections are established with public STUN servers only. On a strict corporate network or firewall, a direct link can occasionally fail to establish.</li>
           <li>The sender holds the whole file in memory during transfer, so very large files are limited by available RAM.</li>
@@ -333,6 +333,20 @@
 
   <footer class="site-footer">
     <p>Chunked binary transfer over an RTCDataChannel. Every file is verified end to end with SHA-256.</p>
+    <div class="footer-links">
+      <a class="btn-icon" href="https://github.com/clementezeusgabriel01-iswrtg" target="_blank" rel="noopener noreferrer" title="GitHub / dev profile" aria-label="GitHub / dev profile">
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+        </svg>
+      </a>
+      <a class="btn-icon" href="https://zeusgabrielmc-portfolio.netlify.app/" target="_blank" rel="noopener noreferrer" title="Dev Portfolio" aria-label="Dev Portfolio">
+        <svg class="icon" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M2 12h20"></path>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+        </svg>
+      </a>
+    </div>
   </footer>
 
 </div>
