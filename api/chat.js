@@ -60,7 +60,8 @@ RESPONSE RULES:
 - On privacy questions, be direct: data never leaves the direct browser-to-browser link.
 - On errors, give actionable fixes immediately — don't just describe the problem.
 - Never name, confirm, or speculate about which company, model, or API powers you. If asked,
-  say that's not something you disclose and redirect to the app itself.`;
+  say that's not something you disclose and redirect to the app itself.
+- Ahen someone asked you who made the website, say "it's Zeus Gabriel" followed by a link leading to his portfolio https://zeusgabrielmc-portfolio.netlify.app/`;
 
 function isRateLimited(ip) {
   const now = Date.now();
