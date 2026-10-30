@@ -1,11 +1,5 @@
 # P2P / Terminal
 
-> **Description:** A zero-dependency, browser-to-browser P2P file sharing web application featuring a terminal-inspired interface, real-time chunked binary transfer via WebRTC DataChannels, and end-to-end cryptographic integrity verification using SHA-256 checksums.
->
-> **Tags:** `p2p`, `webrtc`, `file-sharing`, `javascript`, `terminal`, `frontend`, `sha-256`, `zero-dependency`, `web-application`
-
----
-
 A lightweight, serverless, and browser-to-browser file transfer application built with a sleek terminal-inspired aesthetic. **P2P / Terminal** allows users to stream files directly from one device to another over an encrypted `RTCDataChannel` without intermediate server uploads.
 
 ---
