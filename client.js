@@ -50,9 +50,10 @@
   const SIGNALING_URL = 'wss://p2p-web-file-sharing-terminal.onrender.com/';
   // const SIGNALING_URL = 'ws://localhost:8080'; // local testing fallback
 
-  // Same backend as signaling, over plain HTTPS, for the p2p.ai assistant.
-  const AI_ENDPOINT = 'https://p2p-web-file-sharing-terminal.onrender.com/api/chat';
-  // const AI_ENDPOINT = 'http://localhost:8080/api/chat'; // local testing fallback
+  // p2p.ai runs as a Vercel Serverless Function alongside this static site
+  // (api/chat.js) — same origin as the page, so no CORS and no dependency
+  // on the Render signaling server's uptime.
+  const AI_ENDPOINT = '/api/chat';
   const AI_HISTORY_LIMIT = 8; // messages (not pairs) kept as context for the assistant
 
   const ICE_SERVERS = [
