@@ -681,6 +681,17 @@
         logLine(`incoming: ${msg.name} (${formatBytes(msg.size)})`, 'info');
       } else if (msg.type === 'end') {
         finalizeInbound(msg.hash);
+      } else if (msg.type === 'verify-result') {
+        // Sent back by the receiver once it has hashed what it got, so the
+        // sender's own UI (which otherwise has no way to know) can show the
+        // same verified/mismatch result and remote hash.
+        el.hashRemote.textContent = msg.hash;
+        el.checksum.textContent = msg.match ? 'verified' : 'mismatch';
+        el.checksum.className = 'metric-value ' + (msg.match ? 'ok' : 'err');
+        logLine(
+          msg.match ? 'peer confirmed checksum match' : 'PEER REPORTED CHECKSUM MISMATCH',
+          msg.match ? 'ok' : 'err'
+        );
       }
       return;
     }
@@ -712,9 +723,16 @@
     el.checksum.textContent = match ? 'verified' : 'mismatch';
     el.checksum.className = 'metric-value ' + (match ? 'ok' : 'err');
     logLine(
-      match ? `checksum verified — ${name} is intact` : `CHECKSUM MISMATCH — ${name} may be corrupted`,
+      match ? `checksum verified: ${name} is intact` : `CHECKSUM MISMATCH: ${name} may be corrupted`,
       match ? 'ok' : 'err'
     );
+
+    // Let the sender know too — it has no visibility into what we
+    // actually received or computed otherwise, and its own checksum/remote
+    // hash fields would sit on "pending" forever without this.
+    if (dataChannel && dataChannel.readyState === 'open') {
+      dataChannel.send(JSON.stringify({ type: 'verify-result', hash: localHash, match }));
+    }
 
     setLinkActivity(false);
     triggerDownload(blob, name);
