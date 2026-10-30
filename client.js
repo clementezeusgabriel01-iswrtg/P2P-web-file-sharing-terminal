@@ -3,10 +3,11 @@
  * -----------------------------------------------------------------------
  * P2P::TERMINAL — client logic.
  *
- * Three jobs, kept in three clear sections:
+ * Four jobs, kept in four clear sections:
  *   1. SIGNALING   — talk to server.js over WebSocket to find a peer.
  *   2. WEBRTC      — negotiate RTCPeerConnection + RTCDataChannel.
  *   3. TRANSFER    — chunk, send/receive, backpressure, SHA-256, download.
+ *   4. BOOT        — first-paint loading screen.
  *
  * Design note on memory: for simplicity and correctness, the sender reads
  * the whole file into one ArrayBuffer up front (file.arrayBuffer()) so the
@@ -15,6 +16,22 @@
  * size of the file being sent, on both ends. Fine for a terminal utility;
  * for multi-GB files you'd swap this for a streaming hash (e.g. a JS
  * incremental SHA-256) and `file.slice()` reads straight off disk.
+ *
+ * Fix note (sending progress bar freezing): sendChunks() used to run a
+ * single synchronous `while` loop across every chunk of the file, only
+ * ever pausing when the data channel's bufferedAmount crossed a 16 MB
+ * high-water mark. Queuing a 64 KB chunk is almost instant, and
+ * bufferedAmount is updated asynchronously by the browser rather than the
+ * instant a chunk is queued — so on a fast link the loop could blast
+ * straight through an entire file without that condition ever tripping.
+ * A synchronous loop blocks the main thread, and the main thread is also
+ * what paints the page, so every progress-bar update got queued but never
+ * drawn until the loop finally finished. That's why the receiver's
+ * progress bar (driven by separate incoming-message events, each its own
+ * turn of the event loop) animated smoothly while the sender's froze on
+ * the first computed values. The fix below yields back to the browser on
+ * a fixed chunk cadence, independent of bufferedAmount, so the UI thread
+ * always gets a chance to repaint.
  * -----------------------------------------------------------------------
  */
 
@@ -42,6 +59,13 @@
   const BUFFER_HIGH_WATER = 16 * 1024 * 1024;   // pause sending above this
   const BUFFER_LOW_WATER = 1 * 1024 * 1024;     // resume sending below this
   const UI_THROTTLE_MS = 100;                   // max metrics DOM update rate
+  const YIELD_EVERY_N_CHUNKS = 12;              // ~768 KB — keeps the UI thread responsive
+
+  const WS_RECONNECT_MIN_MS = 1000;
+  const WS_RECONNECT_MAX_MS = 10000;
+
+  const BOOT_MIN_MS = 650;  // loading screen never flashes away instantly
+  const BOOT_MAX_MS = 5000; // ...but never blocks the app indefinitely either
 
   // =========================================================================
   // DOM REFS
@@ -53,6 +77,7 @@
     heroStatus: $('hero-status'),
     dotWs: $('dot-ws'), txtWs: $('txt-ws'),
     dotPeer: $('dot-peer'), txtPeer: $('txt-peer'),
+    linkDiagram: $('link-diagram'),
     btnCreate: $('btn-create'),
     btnJoin: $('btn-join'),
     inputJoinCode: $('input-join-code'),
@@ -62,6 +87,8 @@
     dropzone: $('dropzone'),
     fileInput: $('file-input'),
     log: $('terminal-log'),
+    btnClearLog: $('btn-clear-log'),
+    transferCard: $('transfer-card'),
     filename: $('stat-filename'),
     direction: $('stat-direction'),
     filesize: $('stat-filesize'),
@@ -73,6 +100,16 @@
     checksum: $('stat-checksum'),
     hashLocal: $('hash-local'),
     hashRemote: $('hash-remote'),
+    btnCopyLocalHash: $('btn-copy-local-hash'),
+    btnCopyRemoteHash: $('btn-copy-remote-hash'),
+    bootLoader: $('boot-loader'),
+    bootStatus: $('boot-status'),
+    tabBtnDocs: $('tab-btn-docs'),
+    tabBtnApp: $('tab-btn-app'),
+    panelDocs: $('panel-docs'),
+    panelApp: $('panel-app'),
+    btnMenu: $('btn-menu'),
+    mobileMenu: $('mobile-menu'),
   };
 
   // =========================================================================
@@ -84,11 +121,43 @@
   let dataChannel = null;
   let roomId = null;
   let isHost = false;
+  let wsReconnectAttempts = 0;
+  let wsReconnectTimer = null;
 
   /** Receiver-side accumulation state for the file currently inbound. */
   let inbound = null; // { name, size, mime, chunks: [], received, startTime }
 
   let lastUiTick = 0;
+
+  // =========================================================================
+  // BOOT / LOADING SCREEN
+  // =========================================================================
+
+  const bootStart = performance.now();
+  let bootDone = false;
+
+  function setBootStatus(text) {
+    if (el.bootStatus) el.bootStatus.textContent = text;
+  }
+
+  function finishBoot() {
+    if (bootDone) return;
+    const elapsed = performance.now() - bootStart;
+    const wait = Math.max(0, BOOT_MIN_MS - elapsed);
+    setTimeout(hideBootLoader, wait);
+  }
+
+  function hideBootLoader() {
+    if (bootDone || !el.bootLoader) return;
+    bootDone = true;
+    el.bootLoader.classList.add('boot-loader-hide');
+    el.bootLoader.addEventListener('transitionend', () => el.bootLoader.remove(), { once: true });
+    setTimeout(() => el.bootLoader?.remove(), 700); // fallback if transitionend never fires
+  }
+
+  // Hard cap — never let the loading screen block the app, even if the
+  // signaling server is completely unreachable.
+  setTimeout(finishBoot, BOOT_MAX_MS);
 
   // =========================================================================
   // LOG + STATUS HELPERS
@@ -111,22 +180,33 @@
 
   function setWsStatus(state) {
     // state: 'off' | 'connecting' | 'on' | 'err'
-    el.dotWs.className = 'sig ' + (state === 'on' ? 'on' : state === 'err' ? 'err' : state === 'connecting' ? 'warn' : 'off');
+    el.dotWs.className = 'status-dot ' + (state === 'on' ? 'on' : state === 'err' ? 'err' : state === 'connecting' ? 'warn' : 'off');
     el.txtWs.textContent = { off: 'offline', connecting: 'connecting', on: 'online', err: 'error' }[state];
+    // A session can only be started once we have a live signaling link.
+    const ready = state === 'on';
+    el.btnCreate.disabled = !ready;
+    el.btnJoin.disabled = !ready;
   }
 
   function setPeerStatus(state) {
     // state: 'none' | 'waiting' | 'connected' | 'lost'
-    el.dotPeer.className = 'sig ' + (state === 'connected' ? 'on' : state === 'waiting' ? 'warn' : state === 'lost' ? 'err' : 'off');
+    el.dotPeer.className = 'status-dot ' + (state === 'connected' ? 'on' : state === 'waiting' ? 'warn' : state === 'lost' ? 'err' : 'off');
     el.txtPeer.textContent = { none: 'none', waiting: 'waiting', connected: 'linked', lost: 'lost' }[state];
 
-    // Drive the big hero readout — the single most load-bearing fact on screen.
+    // Drive the hero readout — the single most load-bearing fact on screen.
     el.heroStatus.textContent = {
-      none: 'NO SESSION', waiting: 'AWAITING PEER', connected: 'LINKED', lost: 'LINK LOST',
+      none: 'No active session', waiting: 'Awaiting peer', connected: 'Connected', lost: 'Link lost',
     }[state];
     el.heroStatus.className = 'hero-value ' + (
       state === 'connected' ? 'state-on' : state === 'waiting' ? 'state-wait' : state === 'lost' ? 'state-err' : ''
     );
+    el.linkDiagram.className = 'link-diagram ' + (
+      state === 'connected' ? 'state-on' : state === 'waiting' ? 'state-wait' : state === 'lost' ? 'state-err' : ''
+    );
+  }
+
+  function setLinkActivity(active) {
+    el.linkDiagram.classList.toggle('is-active', active);
   }
 
   // =========================================================================
@@ -156,11 +236,30 @@
     return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('');
   }
 
+  async function copyToClipboard(text, successMessage) {
+    if (!text || text === '—') return;
+    try {
+      await navigator.clipboard.writeText(text);
+      logLine(successMessage, 'ok');
+      return true;
+    } catch {
+      logLine('clipboard unavailable — copy the value manually', 'warn');
+      return false;
+    }
+  }
+
+  function flashCopied(button) {
+    button.classList.add('copied');
+    clearTimeout(button._copiedTimer);
+    button._copiedTimer = setTimeout(() => button.classList.remove('copied'), 1400);
+  }
+
   // =========================================================================
   // TRANSFER UI
   // =========================================================================
 
   function resetTransferUi(name, size, direction) {
+    el.transferCard.classList.add('has-transfer');
     el.filename.textContent = name;
     el.filesize.textContent = formatBytes(size);
     el.direction.textContent = direction;
@@ -170,9 +269,10 @@
     el.speed.textContent = '0 KB/s';
     el.eta.textContent = '—';
     el.checksum.textContent = 'pending';
-    el.checksum.className = 'wait';
+    el.checksum.className = 'metric-value wait';
     el.hashLocal.textContent = '—';
     el.hashRemote.textContent = '—';
+    setLinkActivity(true);
   }
 
   function updateTransferMetrics(done, total, startTime, force = false) {
@@ -198,12 +298,17 @@
   // =========================================================================
 
   function connectSignaling() {
+    clearTimeout(wsReconnectTimer);
     setWsStatus('connecting');
+    setBootStatus('Connecting to signaling server…');
     ws = new WebSocket(SIGNALING_URL);
 
     ws.onopen = () => {
+      wsReconnectAttempts = 0;
       setWsStatus('on');
       logLine(`signal channel open — ${SIGNALING_URL}`, 'ok');
+      setBootStatus('Connected');
+      finishBoot();
     };
 
     ws.onmessage = (event) => {
@@ -218,21 +323,35 @@
 
     ws.onerror = () => {
       setWsStatus('err');
-      logLine('signal channel error — is server.js running on :8080?', 'err');
+      logLine('signal channel error', 'err');
     };
 
     ws.onclose = () => {
       setWsStatus('off');
       setPeerStatus('none');
-      logLine('signal channel closed', 'warn');
+      teardownPeerConnection();
+      roomId = null;
+      isHost = false;
+      el.roomCodeBox.classList.add('hidden');
+      setBootStatus('Signaling unavailable — retrying…');
+      finishBoot();
+      scheduleReconnect();
     };
+  }
+
+  function scheduleReconnect() {
+    wsReconnectAttempts += 1;
+    const delay = Math.min(WS_RECONNECT_MAX_MS, WS_RECONNECT_MIN_MS * 2 ** (wsReconnectAttempts - 1));
+    logLine(`signal channel closed — reconnecting in ${Math.round(delay / 1000)}s`, 'warn');
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = setTimeout(connectSignaling, delay);
   }
 
   function sendSignalingMessage(payload) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(payload));
     } else {
-      logLine('cannot reach signaling server — refresh and retry', 'err');
+      logLine('cannot reach signaling server — check your connection', 'err');
     }
   }
 
@@ -298,6 +417,7 @@
     };
 
     pc.oniceconnectionstatechange = () => {
+      if (!pc) return;
       logLine(`ice state: ${pc.iceConnectionState}`, 'info');
       if (pc.iceConnectionState === 'failed') {
         logLine('ice handshake failed — peer may be behind a restrictive NAT', 'err');
@@ -309,6 +429,7 @@
     };
 
     pc.onconnectionstatechange = () => {
+      if (!pc) return;
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
         logLine(`connection ${pc.connectionState}`, 'err');
         teardownPeerConnection();
@@ -371,6 +492,7 @@
 
     channel.onclose = () => {
       setPeerStatus('lost');
+      setLinkActivity(false);
       logLine('data channel closed', 'warn');
     };
 
@@ -382,12 +504,18 @@
   }
 
   function teardownPeerConnection() {
+    setLinkActivity(false);
     if (dataChannel) {
       dataChannel.onmessage = null;
+      dataChannel.onbufferedamountlow = null;
       try { dataChannel.close(); } catch { /* already closed */ }
       dataChannel = null;
     }
     if (pc) {
+      pc.onicecandidate = null;
+      pc.oniceconnectionstatechange = null;
+      pc.onconnectionstatechange = null;
+      pc.ondatachannel = null;
       try { pc.close(); } catch { /* already closed */ }
       pc = null;
     }
@@ -404,7 +532,7 @@
     }
 
     logLine(`reading ${file.name} into memory (${formatBytes(file.size)})...`, 'info');
-    resetTransferUi(file.name, file.size, 'SENDING');
+    resetTransferUi(file.name, file.size, 'Sending');
 
     let fileBuffer;
     try {
@@ -431,24 +559,40 @@
     logLine(`transmitting ${Math.ceil(file.size / CHUNK_SIZE)} chunks...`, 'info');
     const startTime = performance.now();
 
-    await sendChunks(fileBuffer, startTime);
+    try {
+      await sendChunks(fileBuffer, startTime);
+    } catch (err) {
+      logLine(`transfer failed: ${err.message}`, 'err');
+      setLinkActivity(false);
+      return;
+    }
 
     dataChannel.send(JSON.stringify({ type: 'end', hash: hashHex }));
     updateTransferMetrics(file.size, file.size, startTime, true);
+    setLinkActivity(false);
     logLine(`transfer complete — ${file.name} sent`, 'ok');
   }
 
+  /**
+   * Sends `buffer` over dataChannel in CHUNK_SIZE pieces.
+   *
+   * Two separate conditions hand control back to the browser:
+   *  - backpressure: bufferedAmount above the high-water mark, resumed by
+   *    the 'bufferedamountlow' event (keeps memory flat on large files).
+   *  - a fixed chunk cadence (YIELD_EVERY_N_CHUNKS), resumed on the next
+   *    animation frame (keeps the tab responsive and the progress bar
+   *    actually painting, independent of how fast bufferedAmount happens
+   *    to report itself).
+   */
   function sendChunks(buffer, startTime) {
     return new Promise((resolve, reject) => {
       const total = buffer.byteLength;
       let offset = 0;
+      let chunksSinceYield = 0;
 
       function pump() {
         try {
           while (offset < total) {
-            // Backpressure: if the channel's send buffer is too full, stop
-            // pushing and wait for 'bufferedamountlow' before resuming. This
-            // is what keeps memory flat instead of spiking on large files.
             if (dataChannel.bufferedAmount > BUFFER_HIGH_WATER) {
               dataChannel.onbufferedamountlow = () => {
                 dataChannel.onbufferedamountlow = null;
@@ -460,7 +604,15 @@
             const end = Math.min(offset + CHUNK_SIZE, total);
             dataChannel.send(buffer.slice(offset, end));
             offset = end;
+            chunksSinceYield += 1;
             updateTransferMetrics(offset, total, startTime);
+
+            if (chunksSinceYield >= YIELD_EVERY_N_CHUNKS && offset < total) {
+              chunksSinceYield = 0;
+              updateTransferMetrics(offset, total, startTime, true); // paint before yielding
+              requestAnimationFrame(pump);
+              return;
+            }
           }
           resolve();
         } catch (err) {
@@ -490,7 +642,7 @@
           received: 0,
           startTime: performance.now(),
         };
-        resetTransferUi(msg.name, msg.size, 'RECEIVING');
+        resetTransferUi(msg.name, msg.size, 'Receiving');
         logLine(`incoming: ${msg.name} (${formatBytes(msg.size)})`, 'info');
       } else if (msg.type === 'end') {
         finalizeInbound(msg.hash);
@@ -523,12 +675,13 @@
 
     const match = localHash === remoteHash;
     el.checksum.textContent = match ? 'verified' : 'mismatch';
-    el.checksum.className = match ? 'ok' : 'err';
+    el.checksum.className = 'metric-value ' + (match ? 'ok' : 'err');
     logLine(
       match ? `checksum verified — ${name} is intact` : `CHECKSUM MISMATCH — ${name} may be corrupted`,
       match ? 'ok' : 'err'
     );
 
+    setLinkActivity(false);
     triggerDownload(blob, name);
     inbound = null;
   }
@@ -544,6 +697,75 @@
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     logLine(`download triggered: ${filename}`, 'ok');
   }
+
+  // =========================================================================
+  // TABS — "Docs" and "Transfer" sections, plus the mobile hamburger menu
+  // =========================================================================
+
+  const TABS = {
+    docs: { tabBtn: el.tabBtnDocs, panel: el.panelDocs },
+    app: { tabBtn: el.tabBtnApp, panel: el.panelApp },
+  };
+
+  function activateTab(name) {
+    if (!TABS[name]) return;
+
+    Object.entries(TABS).forEach(([key, { tabBtn, panel }]) => {
+      const isActive = key === name;
+      tabBtn.setAttribute('aria-selected', String(isActive));
+      tabBtn.tabIndex = isActive ? 0 : -1;
+      panel.hidden = !isActive;
+    });
+
+    el.mobileMenu.querySelectorAll('.mobile-menu-item').forEach((item) => {
+      item.setAttribute('aria-current', String(item.dataset.tab === name));
+    });
+
+    closeMobileMenu();
+
+    const hash = `#${name}`;
+    if (location.hash !== hash) history.replaceState(null, '', hash);
+  }
+
+  function openMobileMenu() {
+    el.mobileMenu.hidden = false;
+    el.btnMenu.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeMobileMenu() {
+    el.mobileMenu.hidden = true;
+    el.btnMenu.setAttribute('aria-expanded', 'false');
+  }
+
+  el.tabBtnDocs.addEventListener('click', () => activateTab('docs'));
+  el.tabBtnApp.addEventListener('click', () => activateTab('app'));
+
+  el.btnMenu.addEventListener('click', () => {
+    if (el.mobileMenu.hidden) openMobileMenu(); else closeMobileMenu();
+  });
+
+  el.mobileMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('.mobile-menu-item');
+    if (item) activateTab(item.dataset.tab);
+  });
+
+  document.querySelectorAll('[data-tab]').forEach((node) => {
+    if (node.classList.contains('tab-link') || node.classList.contains('mobile-menu-item')) return;
+    node.addEventListener('click', () => activateTab(node.dataset.tab));
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!el.mobileMenu.hidden && !el.mobileMenu.contains(e.target) && e.target !== el.btnMenu && !el.btnMenu.contains(e.target)) {
+      closeMobileMenu();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !el.mobileMenu.hidden) closeMobileMenu();
+  });
+
+  // Docs is the default landing tab; #app / #transfer deep-links open the tool directly.
+  activateTab(location.hash === '#app' || location.hash === '#transfer' ? 'app' : 'docs');
 
   // =========================================================================
   // UI EVENT WIRING
@@ -571,16 +793,38 @@
     if (e.key === 'Enter') el.btnJoin.click();
   });
 
+  el.inputJoinCode.addEventListener('input', () => {
+    el.inputJoinCode.value = el.inputJoinCode.value.toUpperCase().slice(0, 6);
+  });
+
   el.btnCopy.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(roomId || '');
-      logLine('room code copied to clipboard', 'ok');
-    } catch {
-      logLine('clipboard unavailable — copy the code manually', 'warn');
-    }
+    const ok = await copyToClipboard(roomId, 'room code copied to clipboard');
+    if (ok) flashCopied(el.btnCopy);
+  });
+
+  el.btnCopyLocalHash.addEventListener('click', async () => {
+    const ok = await copyToClipboard(el.hashLocal.textContent, 'local sha-256 copied to clipboard');
+    if (ok) flashCopied(el.btnCopyLocalHash);
+  });
+
+  el.btnCopyRemoteHash.addEventListener('click', async () => {
+    const ok = await copyToClipboard(el.hashRemote.textContent, 'remote sha-256 copied to clipboard');
+    if (ok) flashCopied(el.btnCopyRemoteHash);
+  });
+
+  el.btnClearLog.addEventListener('click', () => {
+    el.log.innerHTML = '';
+    logLine('log cleared', 'info');
   });
 
   el.dropzone.addEventListener('click', () => el.fileInput.click());
+
+  el.dropzone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      el.fileInput.click();
+    }
+  });
 
   el.fileInput.addEventListener('change', () => {
     if (el.fileInput.files[0]) sendFile(el.fileInput.files[0]);
@@ -610,6 +854,7 @@
   // BOOT
   // =========================================================================
 
+  setBootStatus('Initializing interface…');
   logLine('p2p::terminal ready', 'ok');
   connectSignaling();
 })();
