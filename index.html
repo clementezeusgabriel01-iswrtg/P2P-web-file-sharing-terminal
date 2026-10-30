@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>p2p::terminal — direct file transfer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="crt">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-glyph">&gt;_</span>
+      <span class="brand-text">P2P<span class="brand-sep">::</span>TERMINAL</span>
+    </div>
+    <div class="badges">
+      <span class="badge" id="badge-ws">
+        <i class="dot" id="dot-ws"></i>SIGNAL&nbsp;<span id="txt-ws">OFFLINE</span>
+      </span>
+      <span class="badge" id="badge-peer">
+        <i class="dot" id="dot-peer"></i>PEER&nbsp;<span id="txt-peer">NONE</span>
+      </span>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <!-- ============================= LEFT COLUMN ============================= -->
+    <section class="col col-left">
+
+      <div class="panel" id="panel-room">
+        <div class="panel-head">session</div>
+        <div class="panel-body room-body">
+          <button class="btn btn-primary" id="btn-create">create room</button>
+          <div class="room-divider">or</div>
+          <div class="join-row">
+            <input
+              type="text"
+              id="input-join-code"
+              class="input-code"
+              placeholder="ROOM CODE"
+              maxlength="6"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <button class="btn btn-outline" id="btn-join">join</button>
+          </div>
+
+          <div class="room-code-display hidden" id="room-code-box">
+            <span class="room-code-label">share this code —</span>
+            <span class="room-code-value" id="room-code-value">------</span>
+            <button class="btn-copy" id="btn-copy" title="copy to clipboard">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-dropzone">
+        <div class="panel-head">payload</div>
+        <div class="panel-body">
+          <div class="dropzone" id="dropzone">
+            <div class="dropzone-glyph">&#8595;</div>
+            <div class="dropzone-text">drop file here</div>
+            <div class="dropzone-sub">or click to browse — any file, any size</div>
+            <input type="file" id="file-input" hidden>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel panel-grow">
+        <div class="panel-head">log</div>
+        <div class="panel-body panel-body-grow">
+          <div class="terminal-log" id="terminal-log" role="log" aria-live="polite"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============================= RIGHT COLUMN ============================= -->
+    <section class="col col-right">
+
+      <div class="panel">
+        <div class="panel-head">active transfer</div>
+        <div class="panel-body">
+
+          <div class="file-meta">
+            <div class="file-meta-name" id="stat-filename">—</div>
+            <div class="file-meta-sub">
+              <span id="stat-direction">idle</span>
+              <span class="file-meta-dot">&middot;</span>
+              <span id="stat-filesize">0 B</span>
+            </div>
+          </div>
+
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="progress-readout">
+            <span id="stat-pct">0%</span>
+            <span id="stat-bytes">0 B / 0 B</span>
+          </div>
+
+          <div class="metric-grid">
+            <div class="metric">
+              <div class="metric-label">speed</div>
+              <div class="metric-value" id="stat-speed">0 KB/s</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">eta</div>
+              <div class="metric-value" id="stat-eta">—</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">chunk size</div>
+              <div class="metric-value">64 KB</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">checksum</div>
+              <div class="metric-value" id="stat-checksum">pending</div>
+            </div>
+          </div>
+
+          <div class="hash-block" id="hash-block">
+            <div class="hash-row">
+              <span class="hash-label">local sha-256</span>
+              <span class="hash-value" id="hash-local">—</span>
+            </div>
+            <div class="hash-row">
+              <span class="hash-label">remote sha-256</span>
+              <span class="hash-value" id="hash-remote">—</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <footer class="footer-bar">
+    <span>webrtc datachannel &middot; chunked binary transfer &middot; zero file data touches the signaling server</span>
+  </footer>
+
+</div>
+
+<script src="client.js"></script>
+</body>
+            </html>
+            
