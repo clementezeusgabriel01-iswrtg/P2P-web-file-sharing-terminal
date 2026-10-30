@@ -13,6 +13,33 @@
 </head>
 <body>
 
+<!-- ============================= SCATTERED BACKGROUND DESIGN ============================= -->
+<div class="bg-scatter" aria-hidden="true">
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <symbol id="scatter-terminal" viewBox="0 0 100 90">
+        <rect x="4" y="4" width="92" height="82" rx="11"></rect>
+        <line x1="4" y1="32" x2="96" y2="32"></line>
+        <circle cx="19" cy="18" r="4.4"></circle>
+        <circle cx="34" cy="18" r="4.4"></circle>
+        <circle cx="49" cy="18" r="4.4"></circle>
+        <path d="M28 47 L45 58.5 L28 70"></path>
+        <line x1="51" y1="70" x2="72" y2="70"></line>
+      </symbol>
+    </defs>
+  </svg>
+  <svg class="scatter-icon" viewBox="0 0 100 90" style="top:6%;   left:4%;   width:88px;  transform:rotate(-9deg);  opacity:.07;"><use href="#scatter-terminal"></use></svg>
+  <svg class="scatter-icon" viewBox="0 0 100 90" style="top:16%;  left:86%;  width:64px;  transform:rotate(12deg);  opacity:.06;"><use href="#scatter-terminal"></use></svg>
+  <svg class="scatter-icon" viewBox="0 0 100 90" style="top:40%;  left:91%;  width:96px;  transform:rotate(-6deg);  opacity:.05;"><use href="#scatter-terminal"></use></svg>
+  <svg class="scatter-icon" viewBox="0 0 100 90" style="top:2%;   left:46%;  width:54px;  transform:rotate(7deg);   opacity:.05;"><use href="#scatter-terminal"></use></svg>
+  <svg class="scatter-icon" viewBox="0 0 100 90" style="top:58%;  left:2%;   width:72px;  transform:rotate(15deg);  opacity:.06;"><use href="#scatter-terminal"></use></svg>
+  <svg class="scatter-icon" viewBox="0 0 100 90" style="top:78%;  left:90%;  width:70px;  transform:rotate(-13deg); opacity:.06;"><use href="#scatter-terminal"></use></svg>
+  <svg class="scatter-icon" viewBox="0 0 100 90" style="top:86%;  left:10%;  width:60px;  transform:rotate(5deg);   opacity:.05;"><use href="#scatter-terminal"></use></svg>
+  <svg class="scatter-icon" viewBox="0 0 100 90" style="top:30%;  left:7%;   width:40px;  transform:rotate(-20deg);opacity:.04;"><use href="#scatter-terminal"></use></svg>
+  <svg class="scatter-icon" viewBox="0 0 100 90" style="top:68%;  left:48%;  width:46px;  transform:rotate(10deg); opacity:.04;"><use href="#scatter-terminal"></use></svg>
+  <svg class="scatter-icon" viewBox="0 0 100 90" style="top:94%;  left:62%;  width:58px;  transform:rotate(-4deg); opacity:.05;"><use href="#scatter-terminal"></use></svg>
+</div>
+
 <!-- ============================= BOOT / LOADING SCREEN ============================= -->
 <div class="boot-loader" id="boot-loader" role="status" aria-live="polite">
   <svg class="boot-mark" viewBox="0 0 28 28" width="40" height="40" aria-hidden="true">
@@ -47,6 +74,7 @@
     <div class="tabnav-tabs" role="tablist">
       <button class="tab-link" id="tab-btn-docs" role="tab" aria-selected="true" aria-controls="panel-docs" data-tab="docs">Docs</button>
       <button class="tab-link" id="tab-btn-app" role="tab" aria-selected="false" aria-controls="panel-app" data-tab="app" tabindex="-1">Transfer</button>
+      <button class="tab-link" id="tab-btn-ai" role="tab" aria-selected="false" aria-controls="panel-ai" data-tab="ai" tabindex="-1">p2p.ai</button>
     </div>
     <button class="hamburger-btn" id="btn-menu" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
       <svg class="icon icon-menu" viewBox="0 0 24 24">
@@ -56,6 +84,7 @@
     <div class="mobile-menu" id="mobile-menu" hidden>
       <button class="mobile-menu-item" data-tab="docs" aria-current="true">Docs</button>
       <button class="mobile-menu-item" data-tab="app">Transfer</button>
+      <button class="mobile-menu-item" data-tab="ai">p2p.ai</button>
     </div>
   </nav>
 
@@ -326,6 +355,57 @@
       </aside>
 
     </div>
+
+    </div>
+
+    <!-- ================================== AI PANEL ================================== -->
+    <div class="panel panel-ai" id="panel-ai" role="tabpanel" aria-labelledby="tab-btn-ai" hidden>
+
+      <header class="ai-header">
+        <h1 class="ai-title">p2p<span class="brand-slash">.</span>ai</h1>
+        <p class="ai-sub">Ask about room codes, stalled transfers, checksum mismatches, or why a link won't establish.</p>
+      </header>
+
+      <div class="ai-layout">
+        <section class="card ai-card">
+          <div class="ai-chat" id="ai-chat" role="log" aria-live="polite">
+            <div class="ai-msg ai-msg-bot">
+              <span class="ai-msg-tag">p2p.ai</span>
+              <p class="ai-msg-text">&gt; system ready. ask about sessions, transfers, or connection errors.</p>
+            </div>
+          </div>
+
+          <div class="ai-typing hidden" id="ai-typing">
+            <span class="ai-msg-tag">p2p.ai</span>
+            <span class="ai-typing-dots"><i></i><i></i><i></i></span>
+          </div>
+
+          <form class="ai-input-row" id="ai-form">
+            <input
+              type="text"
+              id="ai-input"
+              class="ai-input"
+              placeholder="Type a question&hellip;"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="600"
+              aria-label="Message p2p.ai"
+            >
+            <button type="submit" class="btn btn-primary" id="ai-send">Send</button>
+          </form>
+          <p class="ai-hint" id="ai-hint">Runs alongside the transfer tool. Nothing you send here touches a file in transit.</p>
+        </section>
+
+        <aside class="card ai-side">
+          <h2 class="card-title">Try asking</h2>
+          <ul class="ai-suggest-list" id="ai-suggest-list">
+            <li><button type="button" class="ai-suggest" data-q="Does any file data touch the signaling server?">Does file data touch the server?</button></li>
+            <li><button type="button" class="ai-suggest" data-q="My peer connection keeps failing to establish, why?">Why does my connection keep failing?</button></li>
+            <li><button type="button" class="ai-suggest" data-q="A transfer froze partway through, what's wrong?">A transfer froze &mdash; what's wrong?</button></li>
+            <li><button type="button" class="ai-suggest" data-q="How is file integrity verified?">How is file integrity verified?</button></li>
+          </ul>
+        </aside>
+      </div>
 
     </div>
 
