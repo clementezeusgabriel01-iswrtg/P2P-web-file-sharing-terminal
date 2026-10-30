@@ -905,6 +905,16 @@ button, input {
   color: var(--ink-faint);
 }
 
+.footer-links {
+  display: flex;
+  justify-content: center;
+  gap: calc(var(--u) * 2);
+  margin-top: calc(var(--u) * 4);
+}
+
+.footer-links .btn-icon { color: var(--ink-faint); }
+.footer-links .btn-icon:hover { color: var(--accent); border-color: var(--accent); }
+
 /* ------------------------------------------------------------ responsive */
 
 @media (max-width: 640px) {
