@@ -129,6 +129,22 @@
     aiSend: $('ai-send'),
     aiTyping: $('ai-typing'),
     aiSuggestList: $('ai-suggest-list'),
+    tabBtnSpeed: $('tab-btn-speed'),
+    panelSpeed: $('panel-speed'),
+    speedHeroStatus: $('speed-hero-status'),
+    speedDot: $('speed-dot'),
+    speedPhaseText: $('speed-phase-text'),
+    btnSpeedStart: $('btn-speed-start'),
+    btnSpeedStop: $('btn-speed-stop'),
+    speedProgressWrap: $('speed-progress-wrap'),
+    speedProgressFill: $('speed-progress-fill'),
+    speedProgressLabel: $('speed-progress-label'),
+    speedLog: $('speed-log'),
+    btnSpeedClearLog: $('btn-speed-clear-log'),
+    speedStatPing: $('speed-stat-ping'),
+    speedStatJitter: $('speed-stat-jitter'),
+    speedStatDownload: $('speed-stat-download'),
+    speedStatUpload: $('speed-stat-upload'),
   };
 
   // =========================================================================
@@ -182,13 +198,13 @@
   // LOG + STATUS HELPERS
   // =========================================================================
 
-  function logLine(message, level = 'info') {
+  function logLine(message, level = 'info', target = el.log) {
     const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
     const row = document.createElement('div');
     row.className = 'log-line';
     row.innerHTML = `<span class="log-ts">${ts}</span><span class="log-${level}">${escapeHtml(message)}</span>`;
-    el.log.appendChild(row);
-    el.log.scrollTop = el.log.scrollHeight;
+    target.appendChild(row);
+    target.scrollTop = target.scrollHeight;
   }
 
   function escapeHtml(str) {
@@ -773,6 +789,7 @@
     docs: { tabBtn: el.tabBtnDocs, panel: el.panelDocs },
     app: { tabBtn: el.tabBtnApp, panel: el.panelApp },
     ai: { tabBtn: el.tabBtnAi, panel: el.panelAi },
+    speed: { tabBtn: el.tabBtnSpeed, panel: el.panelSpeed },
   };
 
   function activateTab(name) {
@@ -808,6 +825,7 @@
   el.tabBtnDocs.addEventListener('click', () => activateTab('docs'));
   el.tabBtnApp.addEventListener('click', () => activateTab('app'));
   el.tabBtnAi.addEventListener('click', () => activateTab('ai'));
+  el.tabBtnSpeed.addEventListener('click', () => activateTab('speed'));
 
   el.btnMenu.addEventListener('click', () => {
     if (el.mobileMenu.hidden) openMobileMenu(); else closeMobileMenu();
@@ -837,6 +855,7 @@
   activateTab(
     location.hash === '#app' || location.hash === '#transfer' ? 'app'
       : location.hash === '#ai' ? 'ai'
+      : location.hash === '#speed' ? 'speed'
       : 'docs'
   );
 
@@ -996,6 +1015,284 @@
     if (!btn || aiBusy) return;
     askAi(btn.dataset.q);
   });
+
+  // =========================================================================
+  // SECTION 5 — SPEED TEST
+  // Client-server HTTPS throughput check against api/speed.js. Separate
+  // from the WebRTC link entirely — see the note in the Speed test tab.
+  // =========================================================================
+
+  const SPEED_ENDPOINT = '/api/speed';
+  const SPEED_PING_SAMPLES = 8;
+  const SPEED_DOWNLOAD_MS = 4500;
+  const SPEED_DOWNLOAD_STREAMS = 4;
+  const SPEED_DOWNLOAD_CHUNK_BYTES = 3 * 1024 * 1024; // per request, well under the 4.5 MB platform cap
+  const SPEED_UPLOAD_MS = 4500;
+  const SPEED_UPLOAD_STREAMS = 3;
+  const SPEED_UPLOAD_CHUNK_BYTES = 1 * 1024 * 1024;
+  const SPEED_PROGRESS_TICK_MS = 200;
+
+  const speedState = { running: false, cancelled: false, controller: null };
+  let speedUploadPayload = null; // built lazily, reused across the whole test run
+
+  function formatMs(ms) {
+    return `${Math.round(ms)} ms`;
+  }
+
+  function formatMbps(mbps) {
+    if (!isFinite(mbps) || mbps < 0) return '—';
+    return `${mbps.toFixed(mbps >= 10 ? 1 : 2)} Mbps`;
+  }
+
+  function buildRandomPayload(size) {
+    const buf = new Uint8Array(size);
+    const MAX_SLICE = 65536; // crypto.getRandomValues' per-call ceiling
+    for (let offset = 0; offset < size; offset += MAX_SLICE) {
+      crypto.getRandomValues(buf.subarray(offset, Math.min(offset + MAX_SLICE, size)));
+    }
+    return buf;
+  }
+
+  function setSpeedPhase(label, dotState) {
+    el.speedPhaseText.textContent = label;
+    el.speedDot.className = 'status-dot ' + (dotState || 'off');
+  }
+
+  function setSpeedProgress(pct, label) {
+    el.speedProgressFill.style.transform = `scaleX(${Math.max(0, Math.min(1, pct / 100)).toFixed(4)})`;
+    el.speedProgressLabel.textContent = label;
+  }
+
+  function resetSpeedResults() {
+    el.speedStatPing.textContent = '—';
+    el.speedStatJitter.textContent = '—';
+    el.speedStatDownload.textContent = '—';
+    el.speedStatUpload.textContent = '—';
+    [el.speedStatPing, el.speedStatJitter, el.speedStatDownload, el.speedStatUpload]
+      .forEach((n) => { n.className = 'metric-value'; });
+  }
+
+  function setSpeedUiRunning(running) {
+    el.btnSpeedStart.classList.toggle('hidden', running);
+    el.btnSpeedStop.classList.toggle('hidden', !running);
+    el.speedProgressWrap.classList.toggle('hidden', !running);
+  }
+
+  async function runPingTest(samples) {
+    const times = [];
+    for (let i = 0; i < samples; i++) {
+      if (speedState.cancelled) break;
+      const t0 = performance.now();
+      try {
+        const res = await fetch(`${SPEED_ENDPOINT}?r=${Math.random()}`, { cache: 'no-store' });
+        if (!res.ok) continue;
+        await res.json();
+      } catch {
+        continue;
+      }
+      times.push(performance.now() - t0);
+    }
+    // Drop the first sample — it usually eats a fresh connection's TLS
+    // handshake and isn't representative of steady-state latency.
+    const usable = times.slice(1);
+    if (usable.length < 2) return { ping: times[0] ?? null, jitter: null };
+
+    const sorted = [...usable].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+
+    let jitterSum = 0;
+    for (let i = 1; i < usable.length; i++) jitterSum += Math.abs(usable[i] - usable[i - 1]);
+    const jitter = jitterSum / (usable.length - 1);
+
+    return { ping: median, jitter };
+  }
+
+  async function runDownloadTest(durationMs, streamCount, chunkBytes, onProgress) {
+    const controller = new AbortController();
+    speedState.controller = controller;
+    let totalBytes = 0;
+    const start = performance.now();
+    const durationTimer = setTimeout(() => controller.abort(), durationMs);
+
+ async function worker() {
+      while (!controller.signal.aborted) {
+        let res;
+        try {
+          res = await fetch(`${SPEED_ENDPOINT}?dl=1&n=${chunkBytes}&r=${Math.random()}`, {
+            signal: controller.signal,
+            cache: 'no-store',
+          });
+        } catch {
+          return;
+        }
+        if (!res.ok) return;
+        if (res.body && res.body.getReader) {
+          const reader = res.body.getReader();
+          for (;;) {
+            let step;
+            try {
+              step = await reader.read();
+            } catch {
+              return;
+            }
+            if (step.done) break;
+            totalBytes += step.value.length;
+          }
+        } else {
+          // Fallback for a response type without a readable stream.
+          const buf = await res.arrayBuffer();
+          totalBytes += buf.byteLength;
+        }
+      }
+    }
+
+    const workers = Array.from({ length: streamCount }, worker);
+    const progressTimer = setInterval(() => {
+      onProgress(totalBytes, (performance.now() - start) / 1000);
+    }, SPEED_PROGRESS_TICK_MS);
+
+    await Promise.allSettled(workers);
+    clearTimeout(durationTimer);
+    clearInterval(progressTimer);
+    speedState.controller = null;
+
+    return { bytes: totalBytes, seconds: (performance.now() - start) / 1000 };
+  }
+
+  async function runUploadTest(durationMs, streamCount, chunkBytes, onProgress) {
+    if (!speedUploadPayload || speedUploadPayload.length !== chunkBytes) {
+      speedUploadPayload = buildRandomPayload(chunkBytes);
+    }
+    const payload = speedUploadPayload;
+
+    const controller = new AbortController();
+    speedState.controller = controller;
+    let totalBytes = 0;
+    const start = performance.now();
+    const durationTimer = setTimeout(() => controller.abort(), durationMs);
+
+    async function worker() {
+      while (!controller.signal.aborted) {
+        try {
+          const res = await fetch(SPEED_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: payload,
+            signal: controller.signal,
+            cache: 'no-store',
+          });
+          if (!res.ok) return;
+          await res.json().catch(() => {});
+          totalBytes += payload.length;
+        } catch {
+          return;
+        }
+      }
+    }
+
+    const workers = Array.from({ length: streamCount }, worker);
+    const progressTimer = setInterval(() => {
+      onProgress(totalBytes, (performance.now() - start) / 1000);
+    }, SPEED_PROGRESS_TICK_MS);
+
+    await Promise.allSettled(workers);
+    clearTimeout(durationTimer);
+    clearInterval(progressTimer);
+    speedState.controller = null;
+
+    return { bytes: totalBytes, seconds: (performance.now() - start) / 1000 };
+  }
+
+  async function runSpeedTest() {
+    if (speedState.running) return;
+    speedState.running = true;
+    speedState.cancelled = false;
+    setSpeedUiRunning(true);
+    resetSpeedResults();
+    setSpeedPhase('running', 'warn');
+    logLine('starting speed test…', 'info', el.speedLog);
+
+    try {
+      // --- ping ------------------------------------------------------
+      setSpeedProgress(5, 'Measuring ping…');
+      const { ping, jitter } = await runPingTest(SPEED_PING_SAMPLES);
+      if (speedState.cancelled) throw new Error('cancelled');
+
+      if (ping != null) {
+        el.speedStatPing.textContent = formatMs(ping);
+        el.speedStatJitter.textContent = jitter != null ? formatMs(jitter) : '—';
+        logLine(`ping ${formatMs(ping)}${jitter != null ? `, jitter ${formatMs(jitter)}` : ''}`, 'ok', el.speedLog);
+      } else {
+        el.speedStatPing.textContent = 'failed';
+        el.speedStatPing.className = 'metric-value err';
+        logLine('ping test failed — server unreachable', 'err', el.speedLog);
+      }
+
+      // --- download ----------------------------------------------------
+      setSpeedProgress(20, 'Testing download…');
+      el.speedStatDownload.className = 'metric-value live';
+      const dl = await runDownloadTest(
+        SPEED_DOWNLOAD_MS, SPEED_DOWNLOAD_STREAMS, SPEED_DOWNLOAD_CHUNK_BYTES,
+        (bytes, sec) => {
+          const mbps = sec > 0 ? (bytes * 8) / sec / 1e6 : 0;
+          el.speedStatDownload.textContent = formatMbps(mbps);
+          const frac = Math.min(1, (sec * 1000) / SPEED_DOWNLOAD_MS);
+          setSpeedProgress(20 + frac * 35, `Testing download — ${formatMbps(mbps)}`);
+        },
+      );
+      if (speedState.cancelled) throw new Error('cancelled');
+      const dlMbps = dl.seconds > 0 ? (dl.bytes * 8) / dl.seconds / 1e6 : 0;
+      el.speedStatDownload.textContent = formatMbps(dlMbps);
+      el.speedStatDownload.className = 'metric-value ok';
+      logLine(`download ${formatMbps(dlMbps)} (${formatBytes(dl.bytes)} in ${dl.seconds.toFixed(1)}s)`, 'ok', el.speedLog);
+
+      // --- upload --------------------------------------------------------
+      setSpeedProgress(55, 'Testing upload…');
+      el.speedStatUpload.className = 'metric-value live';
+      const ul = await runUploadTest(
+        SPEED_UPLOAD_MS, SPEED_UPLOAD_STREAMS, SPEED_UPLOAD_CHUNK_BYTES,
+        (bytes, sec) => {
+          const mbps = sec > 0 ? (bytes * 8) / sec / 1e6 : 0;
+          el.speedStatUpload.textContent = formatMbps(mbps);
+          const frac = Math.min(1, (sec * 1000) / SPEED_UPLOAD_MS);
+          setSpeedProgress(55 + frac * 40, `Testing upload — ${formatMbps(mbps)}`);
+        },
+      );
+      if (speedState.cancelled) throw new Error('cancelled');
+      const ulMbps = ul.seconds > 0 ? (ul.bytes * 8) / ul.seconds / 1e6 : 0;
+      el.speedStatUpload.textContent = formatMbps(ulMbps);
+      el.speedStatUpload.className = 'metric-value ok';
+      logLine(`upload ${formatMbps(ulMbps)} (${formatBytes(ul.bytes)} in ${ul.seconds.toFixed(1)}s)`, 'ok', el.speedLog);
+
+      setSpeedProgress(100, 'Done');
+      setSpeedPhase('done', 'on');
+      logLine('speed test complete', 'ok', el.speedLog);
+    } catch (err) {
+      if (speedState.cancelled || err.message === 'cancelled') {
+        setSpeedPhase('stopped', 'warn');
+        setSpeedProgress(0, 'Stopped');
+        logLine('speed test stopped', 'warn', el.speedLog);
+      } else {
+        setSpeedPhase('error', 'err');
+        setSpeedProgress(0, 'Failed');
+        logLine(`speed test error: ${err.message}`, 'err', el.speedLog);
+      }
+    } finally {
+      speedState.running = false;
+      setSpeedUiRunning(false);
+    }
+  }
+
+  function stopSpeedTest() {
+    if (!speedState.running) return;
+    speedState.cancelled = true;
+    if (speedState.controller) speedState.controller.abort();
+    logLine('stopping…', 'warn', el.speedLog);
+  }
+
+  el.btnSpeedStart.addEventListener('click', runSpeedTest);
+  el.btnSpeedStop.addEventListener('click', stopSpeedTest);
+  el.btnSpeedClearLog.addEventListener('click', () => { el.speedLog.innerHTML = ''; });
 
   // =========================================================================
   // BOOT
