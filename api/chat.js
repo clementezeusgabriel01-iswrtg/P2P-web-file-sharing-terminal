@@ -22,7 +22,7 @@
  */
 
 const AI_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const AI_MODEL = 'llama-3.1-8b-instant';
+const AI_MODEL = 'openai/gpt-oss-20b';
 const AI_MAX_TOKENS = 400;
 const AI_TEMPERATURE = 0.4;
 const AI_MAX_MESSAGE_LEN = 2000;
@@ -131,7 +131,8 @@ module.exports = async function handler(req, res) {
     });
 
     if (!upstream.ok) {
-      console.error('AI_UPSTREAM_ERROR', upstream.status);
+      const errBody = await upstream.text().catch(() => '');
+      console.error('AI_UPSTREAM_ERROR', upstream.status, errBody);
       return res.status(502).json({ error: 'Assistant is temporarily unavailable.' });
     }
 
@@ -149,4 +150,4 @@ module.exports = async function handler(req, res) {
     return res.status(502).json({ error: 'Assistant is temporarily unavailable.' });
   }
 };
-    
+
