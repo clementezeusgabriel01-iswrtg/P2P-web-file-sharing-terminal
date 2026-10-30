@@ -24,7 +24,7 @@
     <circle class="boot-spinner-track" cx="20" cy="20" r="17"></circle>
     <circle class="boot-spinner-arc" cx="20" cy="20" r="17"></circle>
   </svg>
-  <p class="boot-status" id="boot-status">Initializing interface&hellip;</p>
+  <p class="boot-status" id="boot-status">Initializing interface&#8230;</p>
 </div>
 
 <div class="page">
@@ -95,6 +95,92 @@
         <h2>Send a file</h2>
         <p>Drop a file onto the panel, or click it to browse, once a session is connected. The file is split into small chunks and streamed over the data channel, with a live readout of progress, speed, and time remaining.</p>
         <p>Before sending, your browser computes a SHA-256 hash of the file. Your peer computes the same hash from what it received and the app compares the two automatically, so you can tell at a glance whether the file arrived intact.</p>
+      </section>
+
+      <section class="docs-section docs-walkthrough">
+        <h2>Step-by-step walkthrough</h2>
+        <p>What each stage of a transfer actually looks like, from code to checksum.</p>
+
+        <div class="walkthrough-grid">
+
+          <figure class="walkthrough-step">
+            <span class="walkthrough-num">1</span>
+            <svg class="walkthrough-shot" viewBox="0 0 520 220" role="img" aria-label="Create a session panel showing a generated six character room code and a copy button">
+              <rect x="0.5" y="0.5" width="519" height="219" rx="12" fill="#ffffff" stroke="#e3e6eb"/>
+              <text x="24" y="34" font-family="IBM Plex Mono, monospace" font-size="12" fill="#94a0ae" letter-spacing="0.04em">TRANSFER</text>
+              <rect x="24" y="52" width="164" height="36" rx="8" fill="#2951e3"/>
+              <text x="106" y="75" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="#ffffff">Create a session</text>
+              <rect x="24" y="110" width="472" height="86" rx="10" fill="#f6f7f9" stroke="#e3e6eb"/>
+              <text x="48" y="136" font-family="IBM Plex Mono, monospace" font-size="11" fill="#94a0ae" letter-spacing="0.08em">ROOM CODE</text>
+              <text x="48" y="174" font-family="IBM Plex Mono, monospace" font-size="30" font-weight="600" fill="#11151c" letter-spacing="0.12em">Q7X2P9</text>
+              <rect x="400" y="148" width="68" height="30" rx="7" fill="#ffffff" stroke="#cfd4dc"/>
+              <text x="434" y="168" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12" fill="#11151c">Copy</text>
+            </svg>
+            <figcaption><strong>Create a session.</strong> Click <em>Create a session</em> and the app mints a six-character room code.</figcaption>
+          </figure>
+
+          <figure class="walkthrough-step">
+            <span class="walkthrough-num">2</span>
+            <svg class="walkthrough-shot" viewBox="0 0 520 220" role="img" aria-label="Diagram of sharing the room code from one browser to a peer entering it in another browser">
+              <rect x="0.5" y="0.5" width="519" height="219" rx="12" fill="#ffffff" stroke="#e3e6eb"/>
+              <rect x="24" y="30" width="200" height="160" rx="10" fill="#f6f7f9" stroke="#e3e6eb"/>
+              <text x="40" y="54" font-family="IBM Plex Mono, monospace" font-size="11" fill="#94a0ae" letter-spacing="0.08em">YOU</text>
+              <text x="40" y="92" font-family="IBM Plex Mono, monospace" font-size="22" font-weight="600" fill="#11151c" letter-spacing="0.1em">Q7X2P9</text>
+              <rect x="296" y="30" width="200" height="160" rx="10" fill="#f6f7f9" stroke="#e3e6eb"/>
+              <text x="312" y="54" font-family="IBM Plex Mono, monospace" font-size="11" fill="#94a0ae" letter-spacing="0.08em">PEER</text>
+              <rect x="312" y="68" width="168" height="34" rx="7" fill="#ffffff" stroke="#cfd4dc"/>
+              <text x="324" y="90" font-family="IBM Plex Mono, monospace" font-size="13" fill="#94a0ae">Enter code&#8230;</text>
+              <rect x="312" y="114" width="100" height="32" rx="7" fill="#2951e3"/>
+              <text x="362" y="135" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12" font-weight="600" fill="#ffffff">Join</text>
+              <line x1="228" y1="110" x2="292" y2="110" stroke="#cfd4dc" stroke-width="2" stroke-dasharray="5 5"/>
+              <path d="M286 104 L294 110 L286 116" fill="none" stroke="#cfd4dc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <text x="260" y="96" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="#5b6372">share any way</text>
+            </svg>
+            <figcaption><strong>Share &amp; join.</strong> Send the code to your peer however you'd like; they enter it and hit <em>Join</em>.</figcaption>
+          </figure>
+
+          <figure class="walkthrough-step">
+            <span class="walkthrough-num">3</span>
+            <svg class="walkthrough-shot" viewBox="0 0 520 220" role="img" aria-label="Status pill changing from awaiting peer to connected once the link negotiates">
+              <rect x="0.5" y="0.5" width="519" height="219" rx="12" fill="#ffffff" stroke="#e3e6eb"/>
+              <rect x="24" y="86" width="150" height="40" rx="20" fill="#fbf1e1"/>
+              <circle cx="46" cy="106" r="5" fill="#b5680a"/>
+              <text x="60" y="111" font-family="IBM Plex Mono, monospace" font-size="13" fill="#b5680a">awaiting peer</text>
+              <path d="M196 106 L244 106" stroke="#cfd4dc" stroke-width="2" stroke-dasharray="5 5"/>
+              <path d="M238 100 L246 106 L238 112" fill="none" stroke="#cfd4dc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <rect x="268" y="86" width="150" height="40" rx="20" fill="#e9f6ef"/>
+              <circle cx="290" cy="106" r="5" fill="#0f8a5f"/>
+              <text x="304" y="111" font-family="IBM Plex Mono, monospace" font-size="13" fill="#0f8a5f">connected</text>
+              <circle cx="172" cy="170" r="13" fill="none" stroke="#0f8a5f" stroke-width="2.4"/>
+              <circle cx="348" cy="170" r="13" fill="none" stroke="#0f8a5f" stroke-width="2.4"/>
+              <line x1="185" y1="170" x2="335" y2="170" stroke="#0f8a5f" stroke-width="2.4"/>
+            </svg>
+            <figcaption><strong>Link negotiates.</strong> Status moves from <em>awaiting peer</em> to <em>connected</em> once the direct channel is open.</figcaption>
+          </figure>
+
+          <figure class="walkthrough-step">
+            <span class="walkthrough-num">4</span>
+            <svg class="walkthrough-shot" viewBox="0 0 520 220" role="img" aria-label="File drop zone with transfer progress bar and matching checksums for sender and peer">
+              <rect x="0.5" y="0.5" width="519" height="219" rx="12" fill="#ffffff" stroke="#e3e6eb"/>
+              <rect x="24" y="22" width="472" height="62" rx="9" fill="#f6f7f9" stroke="#cfd4dc" stroke-dasharray="6 5"/>
+              <rect x="42" y="38" width="22" height="28" rx="3" fill="none" stroke="#5b6372" stroke-width="2"/>
+              <path d="M55 38 L64 47 L55 47 Z" fill="#5b6372"/>
+              <text x="78" y="57" font-family="IBM Plex Sans, sans-serif" font-size="13" fill="#5b6372">report.pdf &#8212; drop to send</text>
+              <rect x="24" y="100" width="472" height="10" rx="5" fill="#eef1fd"/>
+              <rect x="24" y="100" width="300" height="10" rx="5" fill="#2951e3"/>
+              <text x="24" y="130" font-family="IBM Plex Mono, monospace" font-size="12" fill="#5b6372">63% &#183; 11.4 MB/s &#183; 4s left</text>
+              <circle cx="36" cy="162" r="7" fill="#e9f6ef"/>
+              <path d="M32 162 L35 165 L41 159" fill="none" stroke="#0f8a5f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <text x="50" y="166" font-family="IBM Plex Mono, monospace" font-size="12" fill="#11151c">you &#160;9f3a2b7e&#8230;</text>
+              <circle cx="36" cy="186" r="7" fill="#e9f6ef"/>
+              <path d="M32 186 L35 189 L41 183" fill="none" stroke="#0f8a5f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <text x="50" y="190" font-family="IBM Plex Mono, monospace" font-size="12" fill="#11151c">peer 9f3a2b7e&#8230;</text>
+              <text x="300" y="178" font-family="IBM Plex Sans, sans-serif" font-size="12" font-weight="600" fill="#0f8a5f">checksums match</text>
+            </svg>
+            <figcaption><strong>Send &amp; verify.</strong> The file streams with a live readout; matching SHA-256 hashes confirm it arrived intact.</figcaption>
+          </figure>
+
+        </div>
       </section>
 
       <section class="docs-section">
@@ -258,7 +344,7 @@
               <div class="file-meta-name" id="stat-filename">—</div>
               <div class="file-meta-sub">
                 <span id="stat-direction">Idle</span>
-                <span class="file-meta-dot">&middot;</span>
+                <span class="file-meta-dot">&#183;</span>
                 <span id="stat-filesize">0 B</span>
               </div>
             </div>
@@ -358,7 +444,7 @@
               type="text"
               id="ai-input"
               class="ai-input"
-              placeholder="Type a question&hellip;"
+              placeholder="Type a question&#8230;"
               autocomplete="off"
               spellcheck="false"
               maxlength="600"
@@ -374,7 +460,7 @@
           <ul class="ai-suggest-list" id="ai-suggest-list">
             <li><button type="button" class="ai-suggest" data-q="Does any file data touch the signaling server?">Does file data touch the server?</button></li>
             <li><button type="button" class="ai-suggest" data-q="My peer connection keeps failing to establish, why?">Why does my connection keep failing?</button></li>
-            <li><button type="button" class="ai-suggest" data-q="A transfer froze partway through, what's wrong?">A transfer froze &mdash; what's wrong?</button></li>
+            <li><button type="button" class="ai-suggest" data-q="A transfer froze partway through, what's wrong?">A transfer froze &#8212; what's wrong?</button></li>
             <li><button type="button" class="ai-suggest" data-q="How is file integrity verified?">How is file integrity verified?</button></li>
           </ul>
         </aside>
