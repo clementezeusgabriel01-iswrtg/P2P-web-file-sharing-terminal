@@ -821,6 +821,49 @@ button, input {
 
 .btn-icon:hover { border-color: var(--ink); color: var(--ink); }
 
+/* ---------------------------------------------------------- join link -- */
+
+.join-link-display {
+  margin-top: calc(var(--u) * 3);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 4);
+  padding: calc(var(--u) * 4);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.join-link-display.hidden { display: none; }
+
+.join-link-qr {
+  flex-shrink: 0;
+  width: 84px;
+  height: 84px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+}
+
+.join-link-qr svg { width: 100%; height: 100%; }
+
+.join-link-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+
+.join-link-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+
+.join-link-sub { font-size: 11.5px; color: var(--ink-faint); line-height: 1.5; }
+
 .btn-icon-small { width: 28px; height: 28px; }
 .btn-icon-small .icon { width: 15px; height: 15px; }
 
@@ -857,7 +900,26 @@ button, input {
 .dropzone-text { font-size: 14px; font-weight: 600; color: var(--ink); }
 .dropzone:hover .dropzone-text, .dropzone.dragover .dropzone-text { color: var(--accent); }
 
-.dropzone-sub { font-size: 12.5px; color: var(--ink-faint); }
+.dropzone-sub { font-size: 12.5px; color: var(--ink-faint); max-width: 42ch; }
+
+.dropzone-folder-btn {
+  margin-top: calc(var(--u) * -1);
+  font-size: 12.5px;
+  color: var(--ink-dim);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: color 140ms ease, text-decoration-color 140ms ease;
+}
+
+.dropzone-folder-btn:hover {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
+.dropzone.is-busy {
+  pointer-events: none;
+  opacity: 0.6;
+}
 
 /* ------------------------------------------------------------------- log */
 
@@ -1048,6 +1110,10 @@ button, input {
   .join-group { flex-direction: column; }
   .input-code { width: 100%; }
   .card { padding: calc(var(--u) * 5); }
+  .room-code-display { flex-direction: column; align-items: stretch; }
+  .join-link-display { flex-direction: column; align-items: stretch; }
+  .join-link-qr { align-self: center; width: 120px; height: 120px; }
+  .dropzone-sub { max-width: none; }
 }
 
 /* ===================================================================== ai */
