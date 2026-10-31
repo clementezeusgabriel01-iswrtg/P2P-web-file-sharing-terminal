@@ -82,10 +82,10 @@
         <h2>Start a session</h2>
         <ol class="docs-steps">
           <li>
-            <strong>Create a session</strong> to get a six-character room code, then share it with your peer however you'd like: chat, text, a call.
+            <strong>Create a session</strong> to get a six-character room code, plus a one-click join link with its own QR code — share whichever is easiest: read out the code, paste the link, or let your peer scan the code with their phone.
           </li>
           <li>
-            <strong>Join a session</strong> by entering that code on the other end. The two browsers negotiate a direct link automatically.
+            <strong>Join a session</strong> by entering that code, opening the link, or scanning the QR code on the other end. The two browsers negotiate a direct link automatically.
           </li>
           <li>
             Watch the status at the top of the Transfer tab: it moves from <em>awaiting peer</em> to <em>connected</em> once the link is open.
@@ -94,9 +94,9 @@
       </section>
 
       <section class="docs-section">
-        <h2>Send a file</h2>
-        <p>Drop a file onto the panel, or click it to browse, once a session is connected. The file is split into small chunks and streamed over the data channel, with a live readout of progress, speed, and time remaining.</p>
-        <p>Before sending, your browser computes a SHA-256 hash of the file. Your peer computes the same hash from what it received and the app compares the two automatically, so you can tell at a glance whether the file arrived intact.</p>
+        <h2>Send files and folders</h2>
+        <p>Drop one or more files, or an entire folder, onto the panel — or click it to browse for files, or use "choose a folder instead" — once a session is connected. A single file sends as-is; multiple files or a folder are zipped together in your browser first (preserving the folder structure), then the resulting file is split into small chunks and streamed over the data channel, with a live readout of progress, speed, and time remaining.</p>
+        <p>Before sending, your browser computes a SHA-256 hash of the file. Your peer computes the same hash from what it received and the app compares the two automatically, so you can tell at a glance whether the transfer arrived intact — zip included.</p>
       </section>
 
       <section class="docs-section docs-walkthrough">
@@ -302,18 +302,38 @@
               </svg>
             </button>
           </div>
+
+          <div class="join-link-display hidden" id="join-link-box">
+            <div class="join-link-qr" id="qr-container" aria-hidden="true"></div>
+            <div class="join-link-text">
+              <span class="room-code-label">Or send this one-click join link</span>
+              <span class="join-link-value" id="join-link-value">—</span>
+              <span class="join-link-sub">Opening it joins the room automatically — no code to type. Scan the code on another device.</span>
+            </div>
+            <button class="btn-icon" id="btn-copy-join-link" title="Copy join link" aria-label="Copy join link">
+              <svg class="icon icon-copy" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="11" height="11" rx="1.5"></rect>
+                <path d="M5 15V6a1.5 1.5 0 0 1 1.5-1.5H15"></path>
+              </svg>
+              <svg class="icon icon-check" viewBox="0 0 24 24">
+                <path d="M4 12.5 9.5 18 20 6.5"></path>
+              </svg>
+              </button>
+          </div>
         </section>
 
         <section class="card">
-          <h2 class="card-title">Send a file</h2>
-          <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Choose a file to send">
+          <h2 class="card-title">Send files</h2>
+          <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Choose files or a folder to send">
             <svg class="icon icon-upload" viewBox="0 0 24 24">
               <path d="M12 15.5V4M12 4 7.2 8.8M12 4l4.8 4.8"></path>
               <path d="M4.5 15.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"></path>
             </svg>
-            <span class="dropzone-text">Drop a file here, or click to browse</span>
-            <span class="dropzone-sub">Sent directly to your peer once a session is linked</span>
-            <input type="file" id="file-input" hidden>
+            <span class="dropzone-text">Drop files or a folder here, or click to browse</span>
+            <span class="dropzone-sub">A single file sends as-is. Multiple files or a folder are zipped automatically before sending.</span>
+            <button type="button" class="btn-text dropzone-folder-btn" id="btn-choose-folder">or choose a folder instead</button>
+            <input type="file" id="file-input" multiple hidden>
+            <input type="file" id="folder-input" webkitdirectory multiple hidden>
           </div>
         </section>
 
@@ -577,6 +597,8 @@
 
 </div>
 
-<script src="client.js?v=20261030-2"></script>
+<script src="zip.js?v=20261031-1"></script>
+<script src="qrcode.js?v=20261031-1"></script>
+<script src="client.js?v=20261031-1"></script>
 </body>
 </html>
