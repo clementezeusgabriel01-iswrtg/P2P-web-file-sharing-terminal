@@ -7,6 +7,8 @@ A lightweight, serverless, and browser-to-browser file transfer application buil
 ## 🌟 Key Features
 
 * **Direct Browser-to-Browser Transfer:** Files are sent straight from peer to peer using WebRTC data channels, bypassing intermediate servers entirely.
+* **Multi-File & Folder Sending:** Drop several files or a whole folder at once — they're zipped together client-side (`zip.js`, nested paths preserved) before streaming, so the receiver gets one `.zip` to unpack. A single dropped file still sends as-is, with no zip overhead.
+* **One-Click Join Links & QR Codes:** Creating a session also generates a `?join=CODE` link and a scannable QR code (`qrcode.js`, both encoded entirely client-side), so a peer can join by opening a link or scanning a code instead of typing one.
 * **Zero Server Storage for Files:** The signaling server only handles connection metadata (room establishment); file contents never touch or get stored on any server.
 * **End-to-End Cryptographic Integrity (SHA-256):** Automatically computes and compares SHA-256 checksums on both the sender and receiver sides to guarantee file integrity down to the last byte.
 * **Live Transfer Readouts:** Real-time metrics tracking transfer speed, progress percentage, elapsed/remaining time, active chunk size (64 KB default), and live verification hashes.
@@ -25,10 +27,10 @@ A lightweight, serverless, and browser-to-browser file transfer application buil
 
 ## 🚀 How It Works (Step-by-Step)
 
-1. **Create a Session:** Click **Create a session** on the Transfer tab to generate a unique 6-character room code.
-2. **Share & Join:** Share the code with your peer. They enter the code into their session input and click **Join** to establish a secure handshake.
+1. **Create a Session:** Click **Create a session** on the Transfer tab to generate a unique 6-character room code, a one-click join link, and a QR code for that link.
+2. **Share & Join:** Share the code, the link, or the QR code with your peer — however's easiest. They enter the code, open the link, or scan the code to establish a secure handshake.
 3. **Link Established:** Once the WebRTC negotiation completes, the connection status automatically updates from *awaiting peer* to *Connected* with online signal indicators.
-4. **Stream & Verify:** Drag and drop any file onto the transfer panel. The file is split into manageable chunks, streamed across the channel with live progress tracking, and automatically verified against its SHA-256 checksum upon completion.
+4. **Stream & Verify:** Drag and drop a file, several files, or a whole folder onto the transfer panel. Multiple files or a folder are zipped together automatically; the resulting file is split into manageable chunks, streamed across the channel with live progress tracking, and automatically verified against its SHA-256 checksum upon completion.
 
 ---
 
@@ -37,6 +39,8 @@ A lightweight, serverless, and browser-to-browser file transfer application buil
 The core client script manages the entire lifecycle of the P2P connection and file chunking process:
 
 * **Signaling & State Machine:** Establishes communication protocols to exchange ICE candidates and SDP offers/answers via signaling infrastructure.
+* **Folder Walking & Client-Side Zipping (`zip.js`):** Drops and folder picks are expanded via the `FileSystem` entry API (recursing into nested directories), then bundled into a single archive in-browser — native `CompressionStream('deflate-raw')` when available, with an uncompressed "store" fallback — before entering the normal send path. The receiver needs no changes: it just gets a `.zip`.
+* **Client-Side QR Generation (`qrcode.js`):** A dependency-free ISO/IEC 18004 QR encoder (Reed–Solomon error correction, automatic masking) renders the join link as an inline SVG — no external service or network call involved.
 * **Chunked Binary Streaming:** Reads files via the File API (`FileReader` / `ArrayBuffer`), breaks them into optimized chunks (e.g., 64 KB), and pushes them through the `RTCDataChannel` while monitoring buffer backpressure.
 * **Hash Verification Engine:** Utilizes browser-native cryptographic libraries (`crypto.subtle.digest`) to generate local SHA-256 hashes prior to transmission and verifies incoming stream buffers against the remote checksum.
 
