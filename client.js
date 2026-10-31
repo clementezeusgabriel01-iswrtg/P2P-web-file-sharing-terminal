@@ -95,8 +95,14 @@
     roomCodeBox: $('room-code-box'),
     roomCodeValue: $('room-code-value'),
     btnCopy: $('btn-copy'),
+    joinLinkBox: $('join-link-box'),
+    joinLinkValue: $('join-link-value'),
+    btnCopyJoinLink: $('btn-copy-join-link'),
+    qrContainer: $('qr-container'),
     dropzone: $('dropzone'),
     fileInput: $('file-input'),
+    folderInput: $('folder-input'),
+    btnChooseFolder: $('btn-choose-folder'),
     log: $('terminal-log'),
     btnClearLog: $('btn-clear-log'),
     transferCard: $('transfer-card'),
@@ -163,6 +169,20 @@
   let inbound = null; // { name, size, mime, chunks: [], received, startTime }
 
   let lastUiTick = 0;
+
+  // A code carried in the page URL as ?join=XXXXXX (from a shared link or
+  // scanned QR code) — auto-joined once the signaling socket comes up,
+  // then cleared so a later reconnect doesn't repeat it.
+  let pendingJoinCode = (() => {
+    const raw = new URLSearchParams(location.search).get('join');
+    if (!raw) return null;
+    const code = raw.trim().toUpperCase().slice(0, 6);
+    return code.length === 6 ? code : null;
+  })();
+
+  // Guards the dropzone/file inputs while a multi-file or folder selection
+  // is being bundled into a zip, so a second drop can't interleave with it.
+  let isBundling = false;
 
   // =========================================================================
   // BOOT / LOADING SCREEN
@@ -290,6 +310,40 @@
   }
 
   // =========================================================================
+  // JOIN LINK + QR CODE
+  // =========================================================================
+
+  /** The one-click join link for `code` — works wherever this page is hosted. */
+  function buildJoinLink(code) {
+    return `${location.origin}${location.pathname}?join=${code}`;
+  }
+
+  function showJoinLink(code) {
+    const link = buildJoinLink(code);
+    el.joinLinkValue.textContent = link;
+    el.joinLinkBox.classList.remove('hidden');
+
+    try {
+      // Hardcoded, not var(--ink) — this SVG is injected inline via
+      // innerHTML and its <path fill="..."> is a presentation attribute,
+      // not a stylesheet rule, so CSS custom-property resolution there is
+      // inconsistent across browsers. The QR box background is also
+      // always white (see .join-link-qr), so a fixed near-black fill is
+      // both simpler and safer than depending on var() support here.
+      el.qrContainer.innerHTML = window.QRCode.toSvgString(link, {
+        ecLevel: 'M',
+        moduleSize: 4,
+        margin: 2,
+        dark: '#11151c',
+        light: 'none',
+      });
+    } catch (err) {
+      el.qrContainer.innerHTML = '';
+      logLine(`qr generation failed: ${err.message}`, 'warn');
+    }
+  }
+
+  // =========================================================================
   // TRANSFER UI
   // =========================================================================
 
@@ -344,6 +398,21 @@
       logLine(`signal channel open — ${SIGNALING_URL}`, 'ok');
       setBootStatus('Connected');
       finishBoot();
+
+      if (pendingJoinCode && !roomId) {
+        const code = pendingJoinCode;
+        pendingJoinCode = null; // one-shot — don't repeat on a later reconnect
+        el.inputJoinCode.value = code;
+        logLine(`join link detected — joining room ${code}...`, 'info');
+        sendSignalingMessage({ type: 'join', roomId: code });
+
+        // Drop ?join=... from the address bar now that it's been used, so
+        // refreshing the page doesn't silently retry joining a room that
+        // may no longer exist or already has its second peer.
+        const url = new URL(location.href);
+        url.searchParams.delete('join');
+        history.replaceState(null, '', url.pathname + url.search + url.hash);
+      }
     };
 
     ws.onmessage = (event) => {
@@ -368,6 +437,7 @@
       roomId = null;
       isHost = false;
       el.roomCodeBox.classList.add('hidden');
+      el.joinLinkBox.classList.add('hidden');
       setBootStatus('Signaling unavailable — retrying…');
       finishBoot();
       scheduleReconnect();
@@ -400,6 +470,7 @@
         setPeerStatus('waiting');
         logLine(`room created — code ${roomId}`, 'ok');
         logLine('waiting for peer to join...', 'info');
+        showJoinLink(roomId);
         break;
 
       case 'joined':
@@ -782,6 +853,131 @@
   }
 
   // =========================================================================
+  // SECTION 3b — MULTI-FILE / FOLDER SEND (bundles into a zip, then reuses
+  // sendFile() above unchanged — the receiving side needs no changes at
+  // all, it just gets a .zip as the inbound file).
+  // =========================================================================
+
+  /**
+   * Walks a dropped FileSystemDirectoryEntry, collecting every descendant
+   * file. readEntries() only returns entries in batches (an implementation
+   * detail of the API, not a fixed page size) so it must be called
+   * repeatedly until it comes back empty.
+   */
+  function readDirEntries(dirReader) {
+    return new Promise((resolve, reject) => {
+      const all = [];
+      function readBatch() {
+        dirReader.readEntries((batch) => {
+          if (!batch.length) { resolve(all); return; }
+          all.push(...batch);
+          readBatch();
+        }, reject);
+      }
+      readBatch();
+    });
+  }
+
+  async function walkFileEntry(entry, basePath, out) {
+    if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      out.push({ file, path: basePath + entry.name });
+    } else if (entry.isDirectory) {
+      const children = await readDirEntries(entry.createReader());
+      for (const child of children) {
+        await walkFileEntry(child, `${basePath}${entry.name}/`, out);
+      }
+    }
+  }
+
+  /** Expands a DataTransfer from a drop event into a flat [{file, path}]. */
+  async function collectDroppedEntries(dataTransfer) {
+    const out = [];
+    const items = dataTransfer.items;
+
+    if (items && items.length && items[0].webkitGetAsEntry) {
+      const entries = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].kind !== 'file') continue;
+        const entry = items[i].webkitGetAsEntry();
+        if (entry) entries.push(entry);
+      }
+      for (const entry of entries) {
+        await walkFileEntry(entry, '', out);
+      }
+    } else {
+      // Fallback for browsers without the FileSystem entry API — flat
+      // files only, no folder support.
+      for (const file of dataTransfer.files) out.push({ file, path: file.name });
+    }
+    return out;
+  }
+
+  /** A sensible .zip name: the shared top folder if there is one, else a generic bundle name. */
+  function deriveZipName(entries) {
+    const topSegments = new Set(entries.map((e) => (e.path.includes('/') ? e.path.split('/')[0] : null)));
+    if (topSegments.size === 1 && !topSegments.has(null)) {
+      return `${[...topSegments][0]}.zip`;
+    }
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    return `files-${entries.length}-${stamp}.zip`;
+  }
+
+  function setDropzoneBusy(busy) {
+    isBundling = busy;
+    el.dropzone.classList.toggle('is-busy', busy);
+    el.btnChooseFolder.disabled = busy;
+  }
+
+  async function sendZippedBundle(entries) {
+    if (!dataChannel || dataChannel.readyState !== 'open') {
+      logLine('no active peer link — create or join a room first', 'err');
+      return;
+    }
+
+    const zipName = deriveZipName(entries);
+    logLine(`bundling ${entries.length} item${entries.length === 1 ? '' : 's'} into ${zipName}...`, 'info');
+    setDropzoneBusy(true);
+
+    try {
+      const zipEntries = [];
+      for (const { file, path } of entries) {
+        zipEntries.push({ name: path, data: new Uint8Array(await file.arrayBuffer()) });
+      }
+      const zipBlob = await window.ZipWriter.createZipBlob(zipEntries);
+      logLine(`zip built — ${formatBytes(zipBlob.size)}`, 'ok');
+      const zipFile = new File([zipBlob], zipName, { type: 'application/zip' });
+      await sendFile(zipFile);
+    } catch (err) {
+      logLine(`failed to build zip: ${err.message}`, 'err');
+    } finally {
+      setDropzoneBusy(false);
+    }
+  }
+
+  /**
+   * Single entry point for anything the dropzone, file input, or folder
+   * input hands us. A lone flat file (no folder, nothing else selected
+   * alongside it) skips zipping entirely and goes straight through the
+   * existing single-file path — no size/overhead cost for the common case.
+   */
+  async function sendEntries(entries) {
+    if (isBundling) {
+      logLine('still bundling the previous selection — try again in a moment', 'warn');
+      return;
+    }
+    if (entries.length === 0) {
+      logLine('nothing to send — drop a file or a folder', 'warn');
+      return;
+    }
+    if (entries.length === 1 && entries[0].path === entries[0].file.name) {
+      await sendFile(entries[0].file);
+      return;
+    }
+    await sendZippedBundle(entries);
+  }
+
+  // =========================================================================
   // TABS — "Docs" and "Transfer" sections, plus the mobile hamburger menu
   // =========================================================================
 
@@ -852,8 +1048,11 @@
   });
 
   // Docs is the default landing tab; #app / #transfer and #ai deep-link directly.
+  // A ?join=CODE link always lands on the Transfer tab, regardless of hash,
+  // since that's where the auto-join (wired in ws.onopen above) plays out.
   activateTab(
-    location.hash === '#app' || location.hash === '#transfer' ? 'app'
+    pendingJoinCode ? 'app'
+      : location.hash === '#app' || location.hash === '#transfer' ? 'app'
       : location.hash === '#ai' ? 'ai'
       : location.hash === '#speed' ? 'speed'
       : 'docs'
@@ -894,6 +1093,11 @@
     if (ok) flashCopied(el.btnCopy);
   });
 
+  el.btnCopyJoinLink.addEventListener('click', async () => {
+    const ok = await copyToClipboard(el.joinLinkValue.textContent, 'join link copied to clipboard');
+    if (ok) flashCopied(el.btnCopyJoinLink);
+  });
+
   el.btnCopyLocalHash.addEventListener('click', async () => {
     const ok = await copyToClipboard(el.hashLocal.textContent, 'local sha-256 copied to clipboard');
     if (ok) flashCopied(el.btnCopyLocalHash);
@@ -909,24 +1113,50 @@
     logLine('log cleared', 'info');
   });
 
-  el.dropzone.addEventListener('click', () => el.fileInput.click());
+  el.dropzone.addEventListener('click', () => {
+    if (!isBundling) el.fileInput.click();
+  });
 
   el.dropzone.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
+    // Ignore keydowns bubbling up from the "choose a folder" button nested
+    // inside the dropzone — it has its own click handler, and reacting
+    // here too would open both file inputs at once on Enter/Space.
+    if (e.target !== el.dropzone) return;
+    if ((e.key === 'Enter' || e.key === ' ') && !isBundling) {
       e.preventDefault();
       el.fileInput.click();
     }
   });
 
+  // Multiple files from the browse dialog have no folder structure, so
+  // each one's path is just its own name — sendEntries() sends a lone
+  // file straight through, or zips a multi-selection automatically.
   el.fileInput.addEventListener('change', () => {
-    if (el.fileInput.files[0]) sendFile(el.fileInput.files[0]);
+    const entries = Array.from(el.fileInput.files).map((file) => ({ file, path: file.name }));
     el.fileInput.value = '';
+    sendEntries(entries);
+  });
+
+  // A folder picked via the browse dialog (input[webkitdirectory]) reports
+  // each file's path relative to — and including — the chosen folder, so
+  // it already carries the structure a zip should preserve.
+  el.btnChooseFolder.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!isBundling) el.folderInput.click();
+  });
+
+  el.folderInput.addEventListener('change', () => {
+    const entries = Array.from(el.folderInput.files).map((file) => ({
+      file, path: file.webkitRelativePath || file.name,
+    }));
+    el.folderInput.value = '';
+    sendEntries(entries);
   });
 
   ['dragenter', 'dragover'].forEach((evt) =>
     el.dropzone.addEventListener(evt, (e) => {
       e.preventDefault();
-      el.dropzone.classList.add('dragover');
+      if (!isBundling) el.dropzone.classList.add('dragover');
     })
   );
 
@@ -937,9 +1167,10 @@
     })
   );
 
-  el.dropzone.addEventListener('drop', (e) => {
-    const file = e.dataTransfer.files[0];
-    if (file) sendFile(file);
+  el.dropzone.addEventListener('drop', async (e) => {
+    if (isBundling) return;
+    const entries = await collectDroppedEntries(e.dataTransfer);
+    sendEntries(entries);
   });
 
   // =========================================================================
