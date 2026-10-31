@@ -19,6 +19,18 @@
       ]
     },
     {
+      "source": "/zip.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/qrcode.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, must-revalidate" }
+      ]
+    },
+    {
       "source": "/style.css",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, must-revalidate" }
