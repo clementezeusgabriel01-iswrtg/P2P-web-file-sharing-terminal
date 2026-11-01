@@ -5,8 +5,9 @@
  *
  * Responsibilities (and ONLY these — no file data ever touches this
  * process):
- *   1. Let a "host" peer create a room and receive a short room code.
- *   2. Let a "guest" peer join that room with the code.
+ *   1. Let a "host" peer create a room and receive a short room code,
+ *      optionally protected by a PIN.
+ *   2. Let a "guest" peer join that room with the code (and PIN, if set).
  *   3. Relay SDP offers/answers and ICE candidates between the two peers.
  *   4. Clean up rooms on disconnect and log every state transition.
  *
@@ -23,11 +24,21 @@ const crypto = require('crypto');
 
 const PORT = process.env.PORT || 8080;
 const MAX_PEERS_PER_ROOM = 2; // strict 1:1 pairing — this is a P2P transfer tool, not a chat room
+const PIN_PATTERN = /^\d{4,8}$/; // 4-8 digit numeric PIN, matches client-side input[pattern]
 
 const wss = new WebSocketServer({ port: PORT });
 
-/** @type {Map<string, Set<import('ws').WebSocket>>} roomId -> connected sockets */
+/**
+ * roomId -> { sockets: Set<WebSocket>, pinHash: string|null }
+ * pinHash is a SHA-256 hex digest, never the raw PIN — this process never
+ * needs (and never stores) the PIN itself once the room is created.
+ * @type {Map<string, { sockets: Set<import('ws').WebSocket>, pinHash: string|null }>}
+ */
 const rooms = new Map();
+
+function hashPin(pin) {
+  return crypto.createHash('sha256').update(pin).digest('hex');
+}
 
 // -------------------------------------------------------------------------
 // Logging
@@ -64,8 +75,8 @@ function send(socket, payload) {
   }
 }
 
-function broadcastToRoom(room, senderSocket, payload) {
-  for (const peer of room) {
+function broadcastToRoom(roomRecord, senderSocket, payload) {
+  for (const peer of roomRecord.sockets) {
     if (peer !== senderSocket) send(peer, payload);
   }
 }
@@ -74,11 +85,11 @@ function leaveRoom(socket) {
   const { roomId } = socket;
   if (!roomId || !rooms.has(roomId)) return;
 
-  const room = rooms.get(roomId);
-  room.delete(socket);
-  broadcastToRoom(room, socket, { type: 'peer-left' });
+  const roomRecord = rooms.get(roomId);
+  roomRecord.sockets.delete(socket);
+  broadcastToRoom(roomRecord, socket, { type: 'peer-left' });
 
-  if (room.size === 0) {
+  if (roomRecord.sockets.size === 0) {
     rooms.delete(roomId);
     log('ROOM_CLOSED', { room: roomId });
   }
@@ -109,43 +120,58 @@ wss.on('connection', (socket, req) => {
 
     switch (msg.type) {
       case 'create': {
+        const pin = typeof msg.pin === 'string' ? msg.pin.trim() : '';
+        if (pin && !PIN_PATTERN.test(pin)) {
+          return send(socket, { type: 'error', code: 'BAD_PIN_FORMAT', message: 'PIN must be 4-8 digits.' });
+        }
+
         const roomId = generateRoomCode();
-        rooms.set(roomId, new Set([socket]));
+        const pinHash = pin ? hashPin(pin) : null;
+        rooms.set(roomId, { sockets: new Set([socket]), pinHash });
         socket.roomId = roomId;
-        log('ROOM_CREATED', { room: roomId, host: socket.id });
-        send(socket, { type: 'created', roomId });
+        log('ROOM_CREATED', { room: roomId, host: socket.id, pin: pinHash ? 'yes' : 'no' });
+        send(socket, { type: 'created', roomId, pinRequired: !!pinHash });
         break;
       }
 
       case 'join': {
         const roomId = String(msg.roomId || '').toUpperCase().trim();
-        const room = rooms.get(roomId);
+        const roomRecord = rooms.get(roomId);
 
-        if (!room) {
+        if (!roomRecord) {
           log('JOIN_FAILED', { room: roomId, peer: socket.id, reason: 'not_found' });
-          return send(socket, { type: 'error', message: `Room ${roomId} does not exist.` });
+          return send(socket, { type: 'error', code: 'ROOM_NOT_FOUND', message: `Room ${roomId} does not exist.` });
         }
-        if (room.size >= MAX_PEERS_PER_ROOM) {
+        if (roomRecord.sockets.size >= MAX_PEERS_PER_ROOM) {
           log('JOIN_FAILED', { room: roomId, peer: socket.id, reason: 'full' });
-          return send(socket, { type: 'error', message: `Room ${roomId} is already full.` });
+          return send(socket, { type: 'error', code: 'ROOM_FULL', message: `Room ${roomId} is already full.` });
+        }
+        if (roomRecord.pinHash) {
+          const suppliedPin = typeof msg.pin === 'string' ? msg.pin.trim() : '';
+          // Reject silently-missing and wrong PINs the same way — don't
+          // let a response difference tell a guesser "that part was right".
+          if (!suppliedPin || hashPin(suppliedPin) !== roomRecord.pinHash) {
+            log('JOIN_FAILED', { room: roomId, peer: socket.id, reason: 'bad_pin' });
+            return send(socket, { type: 'error', code: 'BAD_PIN', message: 'Incorrect or missing PIN.' });
+          }
         }
 
-        room.add(socket);
+        roomRecord.sockets.add(socket);
         socket.roomId = roomId;
         log('PEER_JOINED', { room: roomId, peer: socket.id });
 
         send(socket, { type: 'joined', roomId });
-        broadcastToRoom(room, socket, { type: 'peer-joined' });
+        broadcastToRoom(roomRecord, socket, { type: 'peer-joined' });
         break;
       }
 
       case 'signal': {
-        const room = rooms.get(socket.roomId);
-        if (!room) {
+        const roomRecord = rooms.get(socket.roomId);
+        if (!roomRecord) {
           return send(socket, { type: 'error', message: 'You are not in a room yet.' });
         }
         // Opaque relay — server never inspects SDP/ICE contents.
-        broadcastToRoom(room, socket, { type: 'signal', data: msg.data });
+        broadcastToRoom(roomRecord, socket, { type: 'signal', data: msg.data });
         break;
       }
 
