@@ -94,15 +94,21 @@
     inputJoinCode: $('input-join-code'),
     roomCodeBox: $('room-code-box'),
     roomCodeValue: $('room-code-value'),
+    roomPinNote: $('room-pin-note'),
+    roomPinValue: $('room-pin-value'),
     btnCopy: $('btn-copy'),
     joinLinkBox: $('join-link-box'),
     joinLinkValue: $('join-link-value'),
+    joinLinkSub: $('join-link-sub'),
     btnCopyJoinLink: $('btn-copy-join-link'),
     qrContainer: $('qr-container'),
+    inputCreatePin: $('input-create-pin'),
+    inputJoinPin: $('input-join-pin'),
     dropzone: $('dropzone'),
     fileInput: $('file-input'),
     folderInput: $('folder-input'),
     btnChooseFolder: $('btn-choose-folder'),
+    inputZipPassword: $('input-zip-password'),
     log: $('terminal-log'),
     btnClearLog: $('btn-clear-log'),
     transferCard: $('transfer-card'),
@@ -318,10 +324,17 @@
     return `${location.origin}${location.pathname}?join=${code}`;
   }
 
-  function showJoinLink(code) {
+  function showJoinLink(code, pinRequired) {
     const link = buildJoinLink(code);
     el.joinLinkValue.textContent = link;
     el.joinLinkBox.classList.remove('hidden');
+
+    // The PIN is deliberately never embedded in this link/QR — baking it
+    // in would make it just as interceptable as the code itself, which
+    // defeats the point of a second, separately-shared secret.
+    el.joinLinkSub.textContent = pinRequired
+      ? 'Opening it fills in the room code, but your peer still needs the PIN — send that separately. Scan the code on another device.'
+      : 'Opening it joins the room automatically — no code to type. Scan the code on another device.';
 
     try {
       // Hardcoded, not var(--ink) — this SVG is injected inline via
@@ -436,7 +449,9 @@
       teardownPeerConnection();
       roomId = null;
       isHost = false;
+      hostPin = null;
       el.roomCodeBox.classList.add('hidden');
+      el.roomPinNote.classList.add('hidden');
       el.joinLinkBox.classList.add('hidden');
       setBootStatus('Signaling unavailable — retrying…');
       finishBoot();
@@ -469,8 +484,17 @@
         el.roomCodeBox.classList.remove('hidden');
         setPeerStatus('waiting');
         logLine(`room created — code ${roomId}`, 'ok');
+
+        if (msg.pinRequired && hostPin) {
+          el.roomPinValue.textContent = hostPin;
+          el.roomPinNote.classList.remove('hidden');
+          logLine(`PIN required to join — ${hostPin} (tell your peer separately)`, 'ok');
+        } else {
+          el.roomPinNote.classList.add('hidden');
+        }
+
         logLine('waiting for peer to join...', 'info');
-        showJoinLink(roomId);
+        showJoinLink(roomId, !!msg.pinRequired);
         break;
 
       case 'joined':
@@ -500,6 +524,12 @@
 
       case 'error':
         logLine(`server: ${msg.message}`, 'err');
+        if (msg.code === 'BAD_PIN') {
+          el.inputJoinPin.focus();
+          logLine('enter the PIN your peer gave you, then click Join again', 'warn');
+        } else if (msg.code === 'BAD_PIN_FORMAT') {
+          el.inputCreatePin.focus();
+        }
         break;
 
       default:
@@ -915,6 +945,12 @@
 
   /** A sensible .zip name: the shared top folder if there is one, else a generic bundle name. */
   function deriveZipName(entries) {
+    // A single file forced through the zip path (password set, but no
+    // folder involved) names the archive after that file, not "files-1-…".
+    if (entries.length === 1) {
+      const base = entries[0].path.includes('/') ? entries[0].path.split('/')[0] : entries[0].file.name;
+      return `${base.replace(/\.[^./]+$/, '')}.zip`;
+    }
     const topSegments = new Set(entries.map((e) => (e.path.includes('/') ? e.path.split('/')[0] : null)));
     if (topSegments.size === 1 && !topSegments.has(null)) {
       return `${[...topSegments][0]}.zip`;
@@ -935,8 +971,13 @@
       return;
     }
 
+    const password = el.inputZipPassword.value; // not trimmed — a password's whitespace is significant
     const zipName = deriveZipName(entries);
-    logLine(`bundling ${entries.length} item${entries.length === 1 ? '' : 's'} into ${zipName}...`, 'info');
+    logLine(
+      `bundling ${entries.length} item${entries.length === 1 ? '' : 's'} into ${zipName}`
+      + `${password ? ' (password-protected)' : ''}...`,
+      'info',
+    );
     setDropzoneBusy(true);
 
     try {
@@ -944,8 +985,8 @@
       for (const { file, path } of entries) {
         zipEntries.push({ name: path, data: new Uint8Array(await file.arrayBuffer()) });
       }
-      const zipBlob = await window.ZipWriter.createZipBlob(zipEntries);
-      logLine(`zip built — ${formatBytes(zipBlob.size)}`, 'ok');
+      const zipBlob = await window.ZipWriter.createZipBlob(zipEntries, password ? { password } : undefined);
+      logLine(`zip built — ${formatBytes(zipBlob.size)}${password ? ', password-protected' : ''}`, 'ok');
       const zipFile = new File([zipBlob], zipName, { type: 'application/zip' });
       await sendFile(zipFile);
     } catch (err) {
@@ -958,8 +999,11 @@
   /**
    * Single entry point for anything the dropzone, file input, or folder
    * input hands us. A lone flat file (no folder, nothing else selected
-   * alongside it) skips zipping entirely and goes straight through the
-   * existing single-file path — no size/overhead cost for the common case.
+   * alongside it, and no zip password set) skips zipping entirely and
+   * goes straight through the existing single-file path — no size/
+   * overhead cost for the common case. Setting a zip password always
+   * routes through the zip step, even for one file, since that password
+   * is the whole point of the trip through sendZippedBundle().
    */
   async function sendEntries(entries) {
     if (isBundling) {
@@ -970,7 +1014,8 @@
       logLine('nothing to send — drop a file or a folder', 'warn');
       return;
     }
-    if (entries.length === 1 && entries[0].path === entries[0].file.name) {
+    const isLoneFlatFile = entries.length === 1 && entries[0].path === entries[0].file.name;
+    if (isLoneFlatFile && !el.inputZipPassword.value) {
       await sendFile(entries[0].file);
       return;
     }
@@ -1062,11 +1107,27 @@
   // UI EVENT WIRING
   // =========================================================================
 
+  // Mirrors the server's PIN_PATTERN (server.js) — kept in sync so a bad
+  // PIN is caught here instead of costing a round-trip to find out.
+  const PIN_PATTERN = /^\d{4,8}$/;
+
+  // What the host typed when creating the room — the server only ever
+  // sees/stores a hash of it (see server.js), so this is the only place
+  // the plaintext PIN exists after the create request is sent. Used to
+  // echo it back in the room-code box once 'created' confirms the room.
+  let hostPin = null;
+
   el.btnCreate.addEventListener('click', () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       return logLine('not connected to signaling server yet', 'err');
     }
-    sendSignalingMessage({ type: 'create' });
+    const pin = el.inputCreatePin.value.trim();
+    if (pin && !PIN_PATTERN.test(pin)) {
+      el.inputCreatePin.focus();
+      return logLine('PIN must be 4-8 digits — leave it blank to skip', 'err');
+    }
+    hostPin = pin || null;
+    sendSignalingMessage(pin ? { type: 'create', pin } : { type: 'create' });
   });
 
   el.btnJoin.addEventListener('click', () => {
@@ -1077,7 +1138,8 @@
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       return logLine('not connected to signaling server yet', 'err');
     }
-    sendSignalingMessage({ type: 'join', roomId: code });
+    const pin = el.inputJoinPin.value.trim();
+    sendSignalingMessage(pin ? { type: 'join', roomId: code, pin } : { type: 'join', roomId: code });
   });
 
   el.inputJoinCode.addEventListener('keydown', (e) => {
@@ -1086,6 +1148,19 @@
 
   el.inputJoinCode.addEventListener('input', () => {
     el.inputJoinCode.value = el.inputJoinCode.value.toUpperCase().slice(0, 6);
+  });
+
+  el.inputJoinPin.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') el.btnJoin.click();
+  });
+
+  // PIN fields accept digits only, trimmed to the server's 8-digit cap —
+  // sanitize on input rather than waiting for the Create/Join click.
+  el.inputJoinPin.addEventListener('input', () => {
+    el.inputJoinPin.value = el.inputJoinPin.value.replace(/\D/g, '').slice(0, 8);
+  });
+  el.inputCreatePin.addEventListener('input', () => {
+    el.inputCreatePin.value = el.inputCreatePin.value.replace(/\D/g, '').slice(0, 8);
   });
 
   el.btnCopy.addEventListener('click', async () => {
@@ -1180,14 +1255,164 @@
   let aiHistory = [];   // [{ role: 'user'|'assistant', content }]
   let aiBusy = false;
 
+  // =========================================================================
+  // Minimal markdown renderer for p2p.ai replies — no external library (no
+  // network access to fetch one, and it's not worth a CDN dependency for
+  // this). Covers what a chat assistant actually uses: headers, bold/
+  // italic, inline code, fenced code blocks, blockquotes, lists, links,
+  // and a horizontal rule. Every raw text run is HTML-escaped BEFORE any
+  // tag is added around it, so markdown syntax never becomes a way to
+  // inject real HTML — see renderInline()/escapeHtml() below.
+  // =========================================================================
+
+  function escapeHtml(s) {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /** Inline formatting within a single block (paragraph line, list item, heading, blockquote line). */
+  function renderInline(text) {
+    let s = escapeHtml(text);
+
+    // Code spans first, stashed behind an HTML-comment placeholder rather
+    // than inserted as real <code> markup right away — otherwise the
+    // bold/italic passes below would reach *inside* that markup and
+    // re-interpret `**literal markdown**` sitting inside a code span.
+    // `<!--...-->` can't collide with anything already in `s`: every raw
+    // `<` from the original text was just escaped to `&lt;` above, so a
+    // bare `<` can now only appear where we put one ourselves.
+    const codeStash = [];
+    s = s.replace(/`([^`]+)`/g, (_, code) => {
+      codeStash.push(`<code>${code}</code>`);
+      return `<!--INLINE_CODE_${codeStash.length - 1}-->`;
+    });
+
+    s = s.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__([^_]+?)__/g, '<strong>$1</strong>');
+    s = s.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
+    s = s.replace(/(^|[^\w])_([^_]+?)_(?!\w)/g, '$1<em>$2</em>');
+    // Links — only http(s)/mailto are linkified; anything else is left as
+    // the already-escaped literal text (inert, not a dropped feature).
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (whole, label, url) => (
+      /^(https?:|mailto:)/i.test(url)
+        ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+        : whole
+    ));
+
+    s = s.replace(/<!--INLINE_CODE_(\d+)-->/g, (_, idx) => codeStash[Number(idx)]);
+    return s;
+  }
+
+  function renderMarkdown(raw) {
+    const lines = raw.replace(/\r\n/g, '\n').split('\n');
+    const out = [];
+    let i = 0;
+
+    const isFence = (l) => /^```/.test(l);
+    const isBlank = (l) => /^\s*$/.test(l);
+    const isRule = (l) => /^(---+|\*\*\*+)\s*$/.test(l);
+    const isHeading = (l) => /^#{1,6}\s+/.test(l);
+    const isQuote = (l) => /^>\s?/.test(l);
+    const isUl = (l) => /^[-*]\s+/.test(l);
+    const isOl = (l) => /^\d+\.\s+/.test(l);
+    const isSpecial = (l) => isFence(l) || isBlank(l) || isRule(l) || isHeading(l) || isQuote(l) || isUl(l) || isOl(l);
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      const fenceMatch = line.match(/^```(\S*)\s*$/);
+      if (fenceMatch) {
+        const lang = fenceMatch[1];
+        const codeLines = [];
+        i++;
+        while (i < lines.length && !/^```\s*$/.test(lines[i])) {
+          codeLines.push(lines[i]);
+          i++;
+        }
+        i++; // skip the closing fence (or just end — truncated code still renders)
+        const langClass = lang ? ` class="lang-${escapeHtml(lang)}"` : '';
+        out.push(`<pre><code${langClass}>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+        continue;
+      }
+
+      if (isBlank(line)) { i++; continue; }
+
+      if (isRule(line)) { out.push('<hr>'); i++; continue; }
+
+      const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+      if (headingMatch) {
+        const level = headingMatch[1].length;
+        out.push(`<h${level}>${renderInline(headingMatch[2])}</h${level}>`);
+        i++;
+        continue;
+      }
+
+      if (isQuote(line)) {
+        const quoteLines = [];
+        while (i < lines.length && isQuote(lines[i])) {
+          quoteLines.push(lines[i].replace(/^>\s?/, ''));
+          i++;
+        }
+        out.push(`<blockquote>${quoteLines.map(renderInline).join('<br>')}</blockquote>`);
+        continue;
+      }
+
+      if (isUl(line)) {
+        const items = [];
+        while (i < lines.length && isUl(lines[i])) {
+          items.push(lines[i].replace(/^[-*]\s+/, ''));
+          i++;
+        }
+        out.push(`<ul>${items.map((it) => `<li>${renderInline(it)}</li>`).join('')}</ul>`);
+        continue;
+      }
+
+      if (isOl(line)) {
+        const items = [];
+        while (i < lines.length && isOl(lines[i])) {
+          items.push(lines[i].replace(/^\d+\.\s+/, ''));
+          i++;
+        }
+        out.push(`<ol>${items.map((it) => `<li>${renderInline(it)}</li>`).join('')}</ol>`);
+        continue;
+      }
+
+      // Paragraph: consume consecutive plain lines until something special.
+      const paraLines = [];
+      while (i < lines.length && !isSpecial(lines[i])) {
+        paraLines.push(lines[i]);
+        i++;
+      }
+      if (paraLines.length) {
+        out.push(`<p>${paraLines.map(renderInline).join('<br>')}</p>`);
+      } else {
+        i++; // defensive — shouldn't happen, but never loop forever
+      }
+    }
+
+    return out.join('\n');
+  }
+
   function appendAiMessage(role, text) {
     const wrap = document.createElement('div');
     wrap.className = `ai-msg ai-msg-${role}`;
     wrap.innerHTML = `
       <span class="ai-msg-tag">${role === 'user' ? 'you' : 'p2p.ai'}</span>
-      <p class="ai-msg-text"></p>
+      <div class="ai-msg-text"></div>
     `;
-    wrap.querySelector('.ai-msg-text').textContent = text;
+    const textEl = wrap.querySelector('.ai-msg-text');
+    if (role === 'bot') {
+      // The only place raw markdown becomes innerHTML — renderMarkdown()
+      // escapes every text run before wrapping it in tags, so this is
+      // safe against the reply containing HTML/script markup.
+      textEl.innerHTML = renderMarkdown(text);
+    } else {
+      textEl.textContent = text;
+    }
     el.aiChat.appendChild(wrap);
     el.aiChat.scrollTop = el.aiChat.scrollHeight;
     return wrap;
