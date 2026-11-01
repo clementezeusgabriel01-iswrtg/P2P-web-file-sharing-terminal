@@ -82,10 +82,10 @@
         <h2>Start a session</h2>
         <ol class="docs-steps">
           <li>
-            <strong>Create a session</strong> to get a six-character room code, plus a one-click join link with its own QR code — share whichever is easiest: read out the code, paste the link, or let your peer scan the code with their phone.
+            <strong>Create a session</strong> to get a six-character room code, plus a one-click join link with its own QR code — share whichever is easiest: read out the code, paste the link, or let your peer scan the code with their phone. Optionally set a PIN first: a room with a PIN rejects anyone who has the code but not the PIN, and a wrong guess never occupies the room's one open seat. The PIN is never included in the link or QR code — share it through a different channel than the one you shared the code through.
           </li>
           <li>
-            <strong>Join a session</strong> by entering that code, opening the link, or scanning the QR code on the other end. The two browsers negotiate a direct link automatically.
+            <strong>Join a session</strong> by entering that code, opening the link, or scanning the QR code on the other end — plus the PIN, if your peer set one. The two browsers negotiate a direct link automatically.
           </li>
           <li>
             Watch the status at the top of the Transfer tab: it moves from <em>awaiting peer</em> to <em>connected</em> once the link is open.
@@ -97,6 +97,7 @@
         <h2>Send files and folders</h2>
         <p>Drop one or more files, or an entire folder, onto the panel — or click it to browse for files, or use "choose a folder instead" — once a session is connected. A single file sends as-is; multiple files or a folder are zipped together in your browser first (preserving the folder structure), then the resulting file is split into small chunks and streamed over the data channel, with a live readout of progress, speed, and time remaining.</p>
         <p>Before sending, your browser computes a SHA-256 hash of the file. Your peer computes the same hash from what it received and the app compares the two automatically, so you can tell at a glance whether the transfer arrived intact — zip included.</p>
+        <p>Set a zip password before sending to encrypt the archive itself, not just the connection — useful if the file might get forwarded, saved, or opened later outside this app. Setting one zips even a single file, since that's the only way to apply it. The password travels to your peer the same way a room PIN does: never through this app, so tell them separately.</p>
       </section>
 
       <section class="docs-section docs-walkthrough">
@@ -270,7 +271,21 @@
           <p class="card-lede">A session links exactly two browsers. Create one and share the code, or enter a code someone shared with you.</p>
 
           <div class="session-row">
-            <button class="btn btn-primary" id="btn-create" disabled>Create a session</button>
+            <div class="create-group">
+              <button class="btn btn-primary" id="btn-create" disabled>Create a session</button>
+              <input
+                type="text"
+                id="input-create-pin"
+                class="input-pin"
+                inputmode="numeric"
+                pattern="[0-9]{4,8}"
+                placeholder="PIN (optional)"
+                maxlength="8"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Optional PIN to protect this room"
+              >
+            </div>
 
             <div class="join-group">
               <input
@@ -283,6 +298,18 @@
                 spellcheck="false"
                 aria-label="Room code"
               >
+              <input
+                type="text"
+                id="input-join-pin"
+                class="input-pin"
+                inputmode="numeric"
+                pattern="[0-9]{4,8}"
+                placeholder="PIN"
+                maxlength="8"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Room PIN, if the host set one"
+              >
               <button class="btn btn-outline" id="btn-join" disabled>Join</button>
             </div>
           </div>
@@ -291,6 +318,7 @@
             <div class="room-code-text">
               <span class="room-code-label">Share this code with your peer</span>
               <span class="room-code-value" id="room-code-value">------</span>
+              <span class="room-pin-note hidden" id="room-pin-note">PIN <strong id="room-pin-value">----</strong> — share this separately from the code and link</span>
             </div>
             <button class="btn-icon" id="btn-copy" title="Copy room code" aria-label="Copy room code">
               <svg class="icon icon-copy" viewBox="0 0 24 24">
@@ -308,7 +336,7 @@
             <div class="join-link-text">
               <span class="room-code-label">Or send this one-click join link</span>
               <span class="join-link-value" id="join-link-value">—</span>
-              <span class="join-link-sub">Opening it joins the room automatically — no code to type. Scan the code on another device.</span>
+              <span class="join-link-sub" id="join-link-sub">Opening it joins the room automatically — no code to type. Scan the code on another device.</span>
             </div>
             <button class="btn-icon" id="btn-copy-join-link" title="Copy join link" aria-label="Copy join link">
               <svg class="icon icon-copy" viewBox="0 0 24 24">
@@ -318,7 +346,7 @@
               <svg class="icon icon-check" viewBox="0 0 24 24">
                 <path d="M4 12.5 9.5 18 20 6.5"></path>
               </svg>
-              </button>
+            </button>
           </div>
         </section>
 
@@ -334,6 +362,21 @@
             <button type="button" class="btn-text dropzone-folder-btn" id="btn-choose-folder">or choose a folder instead</button>
             <input type="file" id="file-input" multiple hidden>
             <input type="file" id="folder-input" webkitdirectory multiple hidden>
+          </div>
+
+          <div class="dropzone-options">
+            <label class="dropzone-option" for="input-zip-password">
+              <span class="dropzone-option-label">Zip password <span class="dropzone-option-hint">(optional — encrypts the archive, not just the link)</span></span>
+              <input
+                type="password"
+                id="input-zip-password"
+                class="input-zip-password"
+                placeholder="Leave blank for no password"
+                autocomplete="new-password"
+                spellcheck="false"
+              >
+            </label>
+            <p class="dropzone-option-sub">When set, every send — even a single file — is wrapped in a password-protected zip. Share the password with your peer separately; it's never sent through this app.</p>
           </div>
         </section>
 
