@@ -714,6 +714,11 @@ button, input {
   gap: calc(var(--u) * 2);
 }
 
+.create-group {
+  display: flex;
+  gap: calc(var(--u) * 2);
+}
+
 .btn {
   font-family: var(--font-sans);
   font-size: 13.5px;
@@ -778,6 +783,35 @@ button, input {
 
 .input-code::placeholder { color: var(--ink-faint); letter-spacing: 0.01em; text-transform: none; }
 .input-code:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+
+.input-pin {
+  width: 112px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  padding: 10px 12px;
+  letter-spacing: 0.05em;
+}
+
+.input-pin::placeholder { color: var(--ink-faint); letter-spacing: 0.01em; }
+.input-pin:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+
+.room-pin-note {
+  font-size: 11.5px;
+  color: var(--ink-dim);
+}
+
+.room-pin-note.hidden { display: none; }
+
+.room-pin-note strong {
+  font-family: var(--font-mono);
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
 
 .room-code-display {
   margin-top: calc(var(--u) * 5);
@@ -919,6 +953,56 @@ button, input {
 .dropzone.is-busy {
   pointer-events: none;
   opacity: 0.6;
+}
+
+.dropzone-options {
+  margin-top: calc(var(--u) * 4);
+  padding-top: calc(var(--u) * 4);
+  border-top: 1px solid var(--border);
+}
+
+.dropzone-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--u) * 3);
+  cursor: default;
+}
+
+.dropzone-option-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dropzone-option-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+
+.input-zip-password {
+  width: 220px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  padding: 9px 12px;
+}
+
+.input-zip-password::placeholder { color: var(--ink-faint); font-family: var(--font-sans); }
+.input-zip-password:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+
+.dropzone-option-sub {
+  margin-top: calc(var(--u) * 2);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  line-height: 1.5;
 }
 
 /* ------------------------------------------------------------------- log */
@@ -1108,12 +1192,16 @@ button, input {
   .link-diagram { max-width: 100%; }
   .session-row { flex-direction: column; align-items: stretch; }
   .join-group { flex-direction: column; }
+  .create-group { flex-direction: column; }
   .input-code { width: 100%; }
+  .input-pin { width: 100%; }
   .card { padding: calc(var(--u) * 5); }
   .room-code-display { flex-direction: column; align-items: stretch; }
   .join-link-display { flex-direction: column; align-items: stretch; }
   .join-link-qr { align-self: center; width: 120px; height: 120px; }
   .dropzone-sub { max-width: none; }
+  .dropzone-option { flex-direction: column; align-items: stretch; gap: calc(var(--u) * 2); }
+  .input-zip-password { width: 100%; }
 }
 
 /* ===================================================================== ai */
@@ -1197,7 +1285,14 @@ button, input {
   word-break: break-word;
 }
 
-.ai-msg-bot .ai-msg-text { font-family: var(--font-mono); font-size: 12.5px; }
+.ai-msg-bot .ai-msg-text {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  /* Bot replies are rendered markdown (real <p>/<ul>/<pre> elements, not
+     raw text), so layout comes from those tags and <br> — not from
+     preserving literal whitespace the way the plain-text variants need. */
+  white-space: normal;
+}
 
 .ai-msg-user .ai-msg-text {
   background: var(--ink);
@@ -1210,6 +1305,75 @@ button, input {
   border-color: var(--bad);
   color: var(--bad);
 }
+
+/* ------------------------------------------- markdown elements (bot replies) */
+
+.ai-msg-text p { margin: 0 0 calc(var(--u) * 2) 0; }
+.ai-msg-text p:last-child { margin-bottom: 0; }
+
+.ai-msg-text h1, .ai-msg-text h2, .ai-msg-text h3,
+.ai-msg-text h4, .ai-msg-text h5, .ai-msg-text h6 {
+  font-size: 1em;
+  font-weight: 700;
+  color: var(--ink);
+  margin: calc(var(--u) * 3) 0 calc(var(--u) * 1.5) 0;
+}
+.ai-msg-text h1:first-child, .ai-msg-text h2:first-child, .ai-msg-text h3:first-child,
+.ai-msg-text h4:first-child, .ai-msg-text h5:first-child, .ai-msg-text h6:first-child {
+  margin-top: 0;
+}
+
+.ai-msg-text code {
+  font-family: var(--font-mono);
+  background: rgba(127, 127, 127, 0.18);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.95em;
+}
+
+.ai-msg-text pre {
+  background: rgba(127, 127, 127, 0.12);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: calc(var(--u) * 2.5);
+  overflow-x: auto;
+  margin: calc(var(--u) * 2) 0;
+}
+
+.ai-msg-text pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  white-space: pre;
+}
+
+.ai-msg-text blockquote {
+  margin: calc(var(--u) * 2) 0;
+  padding-left: calc(var(--u) * 3);
+  border-left: 3px solid var(--border-strong);
+  color: var(--ink-dim);
+}
+
+.ai-msg-text ul, .ai-msg-text ol {
+  margin: calc(var(--u) * 1.5) 0;
+  padding-left: calc(var(--u) * 5);
+}
+
+.ai-msg-text li { margin-bottom: 4px; }
+
+.ai-msg-text hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: calc(var(--u) * 3) 0;
+}
+
+.ai-msg-text a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 140ms ease;
+}
+.ai-msg-text a:hover { text-decoration-color: currentColor; }
 
 .ai-typing {
   display: flex;
